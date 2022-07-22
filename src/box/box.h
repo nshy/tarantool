@@ -239,6 +239,13 @@ void
 box_process_vote(struct ballot *ballot);
 
 /**
+ * Check that log config is correct. Expects table with log config as first
+ * Lua argument.
+ */
+void
+log_check_config(struct lua_State *L);
+
+/**
  * Check Lua configuration before initialization or
  * in case of a configuration change.
  */

@@ -132,15 +132,6 @@ local default_cfg = {
     txn_isolation         = "best-effort",
 }
 
--- cfg variables which are covered by modules
-local module_cfg = {
-    -- logging
-    log                 = log.box_api,
-    log_nonblock        = log.box_api,
-    log_level           = log.box_api,
-    log_format          = log.box_api,
-}
-
 -- cfg types for modules, probably better to
 -- provide some API with type enumeration or
 -- similar. Currently it has use for environment
@@ -259,6 +250,41 @@ local template_cfg = {
     txn_timeout           = 'number',
 }
 
+--
+-- Module config interface
+--
+-- `cfg` is called only on box reconfiguration
+--
+-- `check` is called on first box configuration, module can be already
+-- configured at this moment or not
+--
+-- `on_update` is callback called on module params are changed thru
+-- public API
+--
+local modules = {
+    {
+        map = {
+            log = 'log',
+            nonblock = 'log_nonblock',
+            level = 'log_level',
+            format = 'log_format',
+        },
+        cfg = log.cfg,
+        check = log.internal.check_cfg,
+        on_update = log.internal.on_update,
+    },
+}
+
+local function module_updated(module, key)
+    if key ~= nil then
+        rawset(box.cfg, module.map[key], module.cfg[key])
+    else
+        for km, kb in pairs(module.map) do
+            rawset(box.cfg, kb, module.cfg[km])
+        end
+    end
+end
+
 local function normalize_uri_list_for_replication(port_list)
     if type(port_list) == 'table' then
         return port_list
@@ -330,8 +356,6 @@ end
 local dynamic_cfg = {
     listen                  = private.cfg_set_listen,
     replication             = private.cfg_set_replication,
-    log_level               = log.box_api.cfg_set_log_level,
-    log_format              = log.box_api.cfg_set_log_format,
     io_collect_interval     = private.cfg_set_io_collect_interval,
     readahead               = private.cfg_set_readahead,
     too_long_threshold      = private.cfg_set_too_long_threshold,
@@ -545,26 +569,7 @@ local function upgrade_cfg(cfg, translate_cfg)
     return result_cfg
 end
 
-local function update_module_cfg(cfg, module_cfg)
-    local module_cfg_backup = {}
-    for field, api in pairs(module_cfg) do
-        if cfg[field] ~= nil then
-            module_cfg_backup[field] = api.cfg_get(field) or box.NULL
-
-            local ok, msg = api.cfg_set(cfg, field, cfg[field])
-            if not ok then
-                -- restore back the old values for modules
-                for k, v in pairs(module_cfg_backup) do
-                    module_cfg[k].cfg_set(cfg, k, v)
-                end
-                box.error(box.error.CFG, field, msg)
-            end
-        end
-    end
-end
-
-local function prepare_cfg(cfg, default_cfg, template_cfg,
-                           module_cfg, modify_cfg, prefix)
+local function prepare_cfg(cfg, default_cfg, template_cfg, modify_cfg, prefix)
     if cfg == nil then
         return {}
     end
@@ -594,7 +599,7 @@ local function prepare_cfg(cfg, default_cfg, template_cfg,
                 box.error(box.error.CFG, readable_name, "should be a table")
             end
             v = prepare_cfg(v, default_cfg[k], template_cfg[k],
-                            module_cfg[k], modify_cfg[k], readable_name)
+                            modify_cfg[k], readable_name)
         elseif template_cfg[k] ~= 'module' and
                (string.find(template_cfg[k], ',') == nil) then
             -- one type
@@ -629,17 +634,12 @@ local function apply_env_cfg(cfg, env_cfg)
     end
 end
 
-local function apply_default_cfg(cfg, default_cfg, module_cfg)
+local function apply_default_cfg(cfg, default_cfg)
     for k,v in pairs(default_cfg) do
         if cfg[k] == nil then
             cfg[k] = v
         elseif type(v) == 'table' then
             apply_default_cfg(cfg[k], v)
-        end
-    end
-    for k in pairs(module_cfg) do
-        if cfg[k] == nil then
-            cfg[k] = module_cfg[k].cfg_get(k)
         end
     end
 end
@@ -655,10 +655,20 @@ local function compare_cfg(cfg1, cfg2)
     return table.equals(cfg1, cfg2)
 end
 
+local function box2module(module, cfg)
+    local module_cfg = {}
+    for km, kb in pairs(module.map) do
+        module_cfg[km] = cfg[kb]
+    end
+    return module_cfg
+end
+
 local function reload_cfg(oldcfg, cfg)
     cfg = upgrade_cfg(cfg, translate_cfg)
-    local newcfg = prepare_cfg(cfg, default_cfg, template_cfg,
-                               module_cfg, modify_cfg)
+    for _, module in ipairs(modules) do
+        module.cfg(box2module(module, cfg))
+    end
+    local newcfg = prepare_cfg(cfg, default_cfg, template_cfg, modify_cfg)
     local ordered_cfg = {}
     -- iterate over original table because prepare_cfg() may store NILs
     for key, val in pairs(cfg) do
@@ -765,15 +775,24 @@ local function load_cfg(cfg)
     -- Set options passed through environment variables.
     apply_env_cfg(cfg, box.internal.cfg.env)
 
-    cfg = prepare_cfg(cfg, default_cfg, template_cfg,
-                      module_cfg, modify_cfg)
-    apply_default_cfg(cfg, default_cfg, module_cfg);
-    -- Save new box.cfg
+    cfg = prepare_cfg(cfg, default_cfg, template_cfg, modify_cfg)
+    apply_default_cfg(cfg, default_cfg)
+
+    local modules_cfg = {}
+    for _, module in ipairs(modules) do
+        local module_cfg = box2module(module, cfg)
+        if not pcall(module.check, module_cfg) then
+            return box.error()
+        end
+        modules_cfg[module] = module_cfg
+        for km, kb in pairs(module.map) do
+            cfg[kb] = module_cfg[km]
+        end
+    end
+
     box.cfg = cfg
-    if not pcall(private.cfg_check) or
-       not pcall(update_module_cfg, cfg, module_cfg)  then
-        box.cfg = locked(load_cfg) -- restore original box.cfg
-        -- re-throw exception from check_cfg() or update_module_cfg()
+    if not pcall(private.cfg_check) then
+        box.cfg = locked(load_cfg)
         return box.error()
     end
 
@@ -814,6 +833,15 @@ local function load_cfg(cfg)
 
     -- This call either succeeds or calls panic() / exit().
     private.cfg_load()
+
+    for _, module in ipairs(modules) do
+        -- private.cfg_load did the actual initialization and here we only
+        -- pass values back to modules
+        for k, v in pairs(modules_cfg[module]) do
+            module.cfg[k] = v
+        end
+        module.on_update(function(key) module_updated(module, key) end)
+    end
 
     if snap_version then
         private.clear_recovery_triggers()

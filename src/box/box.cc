@@ -728,11 +728,26 @@ wal_stream_create(struct wal_stream *ctx)
 
 /* {{{ configuration bindings */
 
-static void
-box_check_say(void)
+void
+log_check_config(struct lua_State *L)
 {
 	enum say_logger_type type = SAY_LOGGER_STDERR; /* default */
-	const char *log = cfg_gets("log");
+	const char *log;
+	const char *format_str;
+	int nonblock;
+
+	lua_pushstring(L, "log");
+	lua_gettable(L, 1);
+	log = lua_tostring(L, -1);
+
+	lua_pushstring(L, "format");
+	lua_gettable(L, 1);
+	format_str = lua_tostring(L, -1);
+
+	lua_pushstring(L, "nonblock");
+	lua_gettable(L, 1);
+	nonblock = lua_toboolean(L, -1);
+
 	if (log != NULL && say_parse_logger_type(&log, &type) < 0) {
 		tnt_raise(ClientError, ER_CFG, "log",
 			  diag_last_error(diag_get())->errmsg);
@@ -750,19 +765,14 @@ box_check_say(void)
 		say_free_syslog_opts(&opts);
 	}
 
-	const char *log_format = cfg_gets("log_format");
-	enum say_format format = say_format_by_name(log_format);
-	if (format == say_format_MAX)
-		tnt_raise(ClientError, ER_CFG, "log_format",
-			 "expected 'plain' or 'json'");
+	enum say_format format = say_format_by_name(format_str);
 	if (type == SAY_LOGGER_SYSLOG && format == SF_JSON) {
-		tnt_raise(ClientError, ER_CFG, "log_format",
+		tnt_raise(ClientError, ER_CFG, "log format",
 			  "'json' can't be used with syslog logger");
 	}
-	int log_nonblock = cfg_getb("log_nonblock");
-	if (log_nonblock == 1 &&
+	if (nonblock == 1 &&
 	    (type == SAY_LOGGER_FILE || type == SAY_LOGGER_STDERR)) {
-		tnt_raise(ClientError, ER_CFG, "log_nonblock",
+		tnt_raise(ClientError, ER_CFG, "log nonblock",
 			  "the option is incompatible with file/stderr logger");
 	}
 }
@@ -1369,7 +1379,6 @@ void
 box_check_config(void)
 {
 	struct tt_uuid uuid;
-	box_check_say();
 	box_check_audit();
 	box_check_flightrec();
 	if (box_check_listen() != 0)

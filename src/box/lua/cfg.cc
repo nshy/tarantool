@@ -43,6 +43,20 @@ extern "C" {
 	#include <lua.h>
 } // extern "C"
 
+/**
+ * Wrapper to convert c++ execptions into Lua error.
+ */
+static int
+llog_cfg_check(struct lua_State *L)
+{
+	try {
+		log_check_config(L);
+	} catch (Exception *) {
+		luaT_error(L);
+	}
+	return 0;
+}
+
 static int
 lbox_cfg_check(struct lua_State *L)
 {
@@ -424,6 +438,7 @@ void
 box_lua_cfg_init(struct lua_State *L)
 {
 	static const struct luaL_Reg cfglib_internal[] = {
+		{"log_check", llog_cfg_check},
 		{"cfg_check", lbox_cfg_check},
 		{"cfg_load", lbox_cfg_load},
 		{"cfg_set_listen", lbox_cfg_set_listen},
