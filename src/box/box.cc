@@ -328,6 +328,7 @@ box_process_rw(struct request *request, struct space *space,
 		return -1;
 	assert(iproto_type_is_dml(request->type));
 	rmean_collect(rmean_box, request->type, 1);
+	RegionGuard region_guard(&fiber()->gc);
 	if (access_check_space(space, PRIV_W) != 0)
 		goto rollback;
 	if (txn_begin_stmt(txn, space, request->type) != 0)
@@ -352,11 +353,8 @@ box_process_rw(struct request *request, struct space *space,
 	if (txn_commit_stmt(txn, request))
 		goto rollback;
 
-	if (is_autocommit) {
-		if (txn_commit(txn) < 0)
-			goto error;
-	        fiber_gc();
-	}
+	if (is_autocommit && txn_commit(txn) < 0)
+		goto error;
 	if (return_tuple) {
 		tuple_bless(tuple);
 		tuple_unref(tuple);
@@ -364,10 +362,8 @@ box_process_rw(struct request *request, struct space *space,
 	return 0;
 
 rollback:
-	if (is_autocommit) {
+	if (is_autocommit)
 		txn_abort(txn);
-		fiber_gc();
-	}
 error:
 	if (return_tuple)
 		tuple_unref(tuple);
@@ -507,7 +503,6 @@ wal_stream_abort(struct wal_stream *stream)
 	if (tx != NULL)
 		txn_abort(tx);
 	stream->tsn = 0;
-	fiber_gc();
 }
 
 /**
@@ -661,7 +656,6 @@ wal_stream_apply_dml_row(struct wal_stream *stream, struct xrow_header *row)
 		return -1;
 	}
 	assert(in_txn() == NULL);
-	fiber_gc();
 	return 0;
 
 end_diag_request:
@@ -2624,6 +2618,7 @@ boxk(int type, uint32_t space_id, const char *format, ...)
 	va_start(ap, format);
 	struct region *region = &fiber()->gc;
 	size_t size = 0;
+	RegionGuard region_guard(region);
 	const char *data = mp_vformat_on_region(region, &size, format, ap);
 	va_end(ap);
 	if (data == NULL)
@@ -2676,6 +2671,7 @@ box_space_id_by_name(const char *name, uint32_t len)
 	if (len > BOX_NAME_MAX)
 		return BOX_ID_NIL;
 	uint32_t size = mp_sizeof_array(1) + mp_sizeof_str(len);
+	RegionGuard region_guard(&fiber()->gc);
 	char *begin = (char *) region_alloc(&fiber()->gc, size);
 	if (begin == NULL) {
 		diag_set(OutOfMemory, size, "region_alloc", "begin");
@@ -2702,6 +2698,7 @@ box_index_id_by_name(uint32_t space_id, const char *name, uint32_t len)
 		return BOX_ID_NIL;
 	uint32_t size = mp_sizeof_array(2) + mp_sizeof_uint(space_id) +
 			mp_sizeof_str(len);
+	RegionGuard region_guard(&fiber()->gc);
 	char *begin = (char *) region_alloc(&fiber()->gc, size);
 	if (begin == NULL) {
 		diag_set(OutOfMemory, size, "region_alloc", "begin");
@@ -2982,6 +2979,7 @@ space_truncate(struct space *space)
 {
 	size_t buf_size = 3 * mp_sizeof_array(UINT32_MAX) +
 			  4 * mp_sizeof_uint(UINT64_MAX) + mp_sizeof_str(1);
+	RegionGuard region_guard(&fiber()->gc);
 	char *buf = (char *)region_alloc_xc(&fiber()->gc, buf_size);
 
 	char *tuple_buf = buf;
@@ -3023,6 +3021,7 @@ sequence_data_update(uint32_t seq_id, int64_t value)
 {
 	size_t tuple_buf_size = (mp_sizeof_array(2) +
 				 2 * mp_sizeof_uint(UINT64_MAX));
+	RegionGuard region_guard(&fiber()->gc);
 	char *tuple_buf = (char *) region_alloc(&fiber()->gc, tuple_buf_size);
 	if (tuple_buf == NULL) {
 		diag_set(OutOfMemory, tuple_buf_size, "region", "tuple");
@@ -3051,6 +3050,7 @@ static int
 sequence_data_delete(uint32_t seq_id)
 {
 	size_t key_buf_size = mp_sizeof_array(1) + mp_sizeof_uint(UINT64_MAX);
+	RegionGuard region_guard(&fiber()->gc);
 	char *key_buf = (char *) region_alloc(&fiber()->gc, key_buf_size);
 	if (key_buf == NULL) {
 		diag_set(OutOfMemory, key_buf_size, "region", "key");
@@ -3216,6 +3216,7 @@ box_process_fetch_snapshot(struct iostream *io,
 
 	/* Send end of snapshot data marker */
 	struct xrow_header row;
+	RegionGuard region_guard(&fiber()->gc);
 	xrow_encode_vclock_xc(&row, &stop_vclock);
 	row.sync = header->sync;
 	coio_write_xrow(io, &row);
@@ -3290,6 +3291,7 @@ box_process_register(struct iostream *io, const struct xrow_header *header)
 	relay_final_join(io, header->sync, &req.vclock, &stop_vclock);
 	say_info("final data sent.");
 
+	RegionGuard region_guard(&fiber()->gc);
 	struct xrow_header row;
 	/* Send end of WAL stream marker */
 	xrow_encode_vclock_xc(&row, &replicaset.vclock);
@@ -3429,6 +3431,7 @@ box_process_join(struct iostream *io, const struct xrow_header *header)
 	vclock_copy(&stop_vclock, &replicaset.vclock);
 	/* Send end of initial stage data marker */
 	struct xrow_header row;
+	RegionGuard region_guard(&fiber()->gc);
 	xrow_encode_vclock_xc(&row, &stop_vclock);
 	row.sync = header->sync;
 	coio_write_xrow(io, &row);
@@ -3551,6 +3554,7 @@ box_process_subscribe(struct iostream *io, const struct xrow_header *header)
 	vclock_copy(&rsp.vclock, &replicaset.vclock);
 	rsp.replicaset_uuid = REPLICASET_UUID;
 	struct xrow_header row;
+	RegionGuard region_guard(&fiber()->gc);
 	xrow_encode_subscribe_response_xc(&row, &rsp);
 	/*
 	 * Identify the message with the replica id of this
@@ -3578,6 +3582,7 @@ box_process_subscribe(struct iostream *io, const struct xrow_header *header)
 		 */
 		struct raft_request req;
 		box_raft_checkpoint_remote(&req);
+		RegionGuard region_guard(&fiber()->gc);
 		xrow_encode_raft(&row, &fiber()->gc, &req);
 		coio_write_xrow(io, &row);
 		sent_raft_term = req.term;
@@ -4311,8 +4316,6 @@ box_cfg_xc(void)
 	 */
 	vclock_copy(&replicaset.applier.vclock, &replicaset.vclock);
 
-	fiber_gc();
-
 	/*
 	 * Exclude self from GC delay because we care
 	 * about remote replicas only, still for ref/unref
@@ -4346,7 +4349,6 @@ box_cfg_xc(void)
 	/* Follow replica */
 	replicaset_follow();
 
-	fiber_gc();
 	is_box_configured = true;
 	/*
 	 * Fill in leader election parameters after bootstrap. Before it is not

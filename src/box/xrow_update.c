@@ -367,7 +367,11 @@ xrow_update_check_ops(const char *expr, const char *expr_end,
 {
 	struct xrow_update update;
 	xrow_update_init(&update, index_base);
-	return xrow_update_read_ops(&update, expr, expr_end, format->dict, 0);
+	size_t region_svp = region_used(&fiber()->gc);
+	int ret = xrow_update_read_ops(&update, expr, expr_end,
+				       format->dict, 0);
+	region_truncate(&fiber()->gc, region_svp);
+	return ret;
 }
 
 const char *
@@ -390,6 +394,7 @@ xrow_update_execute(const char *expr,const char *expr_end,
 	if (column_mask)
 		*column_mask = update.column_mask;
 
+	/* ret is allocated on region */
 	return xrow_update_finish(&update, format, p_tuple_len);
 }
 
@@ -413,5 +418,6 @@ xrow_upsert_execute(const char *expr,const char *expr_end,
 	if (column_mask)
 		*column_mask = update.column_mask;
 
+	/* ret is allocated on region */
 	return xrow_update_finish(&update, format, p_tuple_len);
 }
