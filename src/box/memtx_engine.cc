@@ -33,6 +33,7 @@
 #include <small/quota.h>
 #include <small/small.h>
 #include <small/mempool.h>
+#include <sys/sysinfo.h>
 
 #include "fiber.h"
 #include "errinj.h"
@@ -57,6 +58,7 @@
 #include "memtx_tuple_compression.h"
 #include "memtx_space.h"
 #include "memtx_space_upgrade.h"
+#include "tt_sort.h"
 
 #include <type_traits>
 
@@ -1318,7 +1320,7 @@ struct memtx_engine *
 memtx_engine_new(const char *snap_dirname, bool force_recovery,
 		 uint64_t tuple_arena_max_size, uint32_t objsize_min,
 		 bool dontdump, unsigned granularity,
-		 const char *allocator, float alloc_factor,
+		 const char *allocator, float alloc_factor, int sort_threads,
 		 memtx_on_indexes_built_cb on_indexes_built)
 {
 	int64_t snap_signature;
@@ -1412,6 +1414,14 @@ memtx_engine_new(const char *snap_dirname, bool force_recovery,
 	memtx->state = MEMTX_INITIALIZED;
 	memtx->max_tuple_size = MAX_TUPLE_SIZE;
 	memtx->force_recovery = force_recovery;
+	if (sort_threads == 0) {
+		sort_threads = get_nprocs();
+		if (sort_threads < 1)
+			sort_threads = 1;
+		else if (sort_threads > TT_SORT_THREADS_MAX)
+			sort_threads = TT_SORT_THREADS_MAX;
+	}
+	memtx->sort_threads = sort_threads;
 
 	memtx->replica_join_cord = NULL;
 

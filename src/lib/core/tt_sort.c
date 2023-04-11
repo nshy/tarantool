@@ -202,9 +202,9 @@ sort_bucket(va_list ap)
 	struct tt_sort *sort = worker->sort;
 
 	/* Sort this worker bucket. */
-	qsort_arg_st(sort->buffer + worker->bucket_begin * sort->elem_size,
-		     worker->bucket_size, sort->elem_size,
-		     sort->cmp, sort->cmp_arg);
+	qsort_arg(sort->buffer + worker->bucket_begin * sort->elem_size,
+		  worker->bucket_size, sort->elem_size,
+		  sort->cmp, sort->cmp_arg);
 
 	/* Move sorted data back from temporary space. */
 	memcpy(sort->data + worker->bucket_begin * sort->elem_size,
@@ -281,8 +281,8 @@ find_splitters(struct tt_sort *sort)
 		       sort->data + i * sample_step * sort->elem_size,
 		       sort->elem_size);
 
-	qsort_arg_st(samples, samples_num, sort->elem_size, sort->cmp,
-		     sort->cmp_arg);
+	qsort_arg(samples, samples_num, sort->elem_size, sort->cmp,
+		  sort->cmp_arg);
 
 	/* Take splitters from samples. */
 	for (int i = 0; i < sort->thread_count - 1; i++) {
@@ -325,8 +325,8 @@ sort_all(va_list ap)
 {
 	struct tt_sort *sort = va_arg(ap, typeof(sort));
 
-	qsort_arg_st(sort->data, sort->elem_count, sort->elem_size, sort->cmp,
-		     sort->cmp_arg);
+	qsort_arg(sort->data, sort->elem_count, sort->elem_size, sort->cmp,
+		  sort->cmp_arg);
 
 	return 0;
 }
@@ -370,7 +370,7 @@ tt_sort(void *data, size_t elem_count, size_t elem_size,
 	if (elem_count < NOSPAWN_SIZE_THESHOLD) {
 		say_verbose("data size is less than threshold %d,"
 			    " sort in caller thread", NOSPAWN_SIZE_THESHOLD);
-		qsort_arg_st(data, elem_count, elem_size, cmp, cmp_arg);
+		qsort_arg(data, elem_count, elem_size, cmp, cmp_arg);
 		return;
 	}
 

@@ -190,6 +190,7 @@ local default_cfg = {
     sql_cache_size        = 5 * 1024 * 1024,
     txn_timeout           = 365 * 100 * 86400,
     txn_isolation         = "best-effort",
+    memtx_sort_threads    = nil,
 
     metrics     = {
         include = 'all',
@@ -381,6 +382,7 @@ local template_cfg = {
     net_msg_max           = 'number',
     sql_cache_size        = 'number',
     txn_timeout           = 'number',
+    memtx_sort_threads    = 'number',
 
     metrics = 'table',
 }
