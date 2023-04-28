@@ -316,15 +316,14 @@ avl_iter_check(struct avl_iter *iter)
 
 		assert(node->leaf_size != 0);
 
-		assert(node->tree_size == avl_node_size(node->link[0])
-		       + avl_node_size(node->link[1]) + node->leaf_size);
-
+		rope_size_t tree_size = avl_node_size(node->link[0])
+					+ avl_node_size(node->link[1])
+					+ node->leaf_size;
+		assert((rope_size_t)node->tree_size == tree_size);
 		assert(node->height == (MAX(avl_node_height(node->link[0]),
 					    avl_node_height(node->link[1])) + 1));
 		if (node->leaf_size == 0 ||
-		    node->tree_size != (avl_node_size(node->link[0]) +
-					avl_node_size(node->link[1]) +
-					node->leaf_size) ||
+		    (rope_size_t)node->tree_size != tree_size ||
 		    node->height != MAX(avl_node_height(node->link[0]),
 					avl_node_height(node->link[1])) + 1)
 			abort();
