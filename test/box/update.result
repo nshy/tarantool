@@ -2607,3 +2607,49 @@ t:update({{'+', '[2].a', 1}, {'!', '[2].b', {x = 2, y = 3}}, {'=', '[2].b.y', 4}
 ---
 - [1, {'b': {'y': 4, 'x': 2}, 'a': 2}]
 ...
+-- Test removing field and then inserting it
+t = box.tuple.new({1, 5})
+---
+...
+t:update({{'#', 2, 1}, {'!', 2, 7}})
+---
+- [1, 7]
+...
+t = box.tuple.new{1, {a = 2, b = 5}}
+---
+...
+t:update({{'+', '[2].a', 2}, {'#', '[2].b', 1}, {'!', '[2].b', 7}})
+---
+- [1, {'b': 7, 'a': 4}]
+...
+t:update({{'#', '[2].b', 1}, {'!', '[2].b', 7}})
+---
+- [1, {'b': 7, 'a': 2}]
+...
+-- Test inserting field and then removing it
+t = box.tuple.new({1})
+---
+...
+t:update({{'!', 2, 5}, {'#', 2, 1}})
+---
+- [1]
+...
+t = box.tuple.new({1, {a = 2}})
+---
+...
+t:update({{'+', '[2].a', 2}, {'!', '[2].b', 7}, {'#', '[2].b', 1}})
+---
+- [1, {'a': 4}]
+...
+t:update({{'!', '[2].b', 7}, {'#', '[2].b', 1}})
+---
+- [1, {'a': 2}]
+...
+-- Test bar insert of non scalar value and then changing inside it
+t = box.tuple.new({1, {a = {a = 2}}})
+---
+...
+t:update({{'!', '[2].a.b', {x = {x = {y = 2}}}}, {'+', '[2].a.b.x.x.y', 2}})
+---
+- [1, {'a': {'b': {'x': {'x': {'y': 4}}}, 'a': 2}}]
+...
