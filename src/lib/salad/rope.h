@@ -158,6 +158,7 @@ avl_iter_check(struct avl_iter *iter);
 #define rope_iter_start rope_api(iter_start)
 #define rope_iter_next rope_api(iter_next)
 #define rope_iter_delete rope_api(iter_delete)
+#define rope_visit_f rope_api(visit_f)
 #define rope_traverse rope_api(traverse)
 #define rope_check rope_api(check)
 #define rope_node_print rope_api(node_print)
@@ -657,9 +658,11 @@ rope_iter_delete(struct rope_iter *it)
 	ROPE_FREE(it->rope->ctx, it);
 }
 
+typedef void (*rope_visit_f)(const rope_data_t data, size_t size, void *cb_arg);
+
 /** Apply visit_leaf function to every rope leaf. */
 static void
-rope_traverse(struct rope *rope, void (*visit_leaf)(rope_data_t, size_t))
+rope_traverse(struct rope *rope, rope_visit_f visit_leaf, void *cb_arg)
 {
 	struct rope_iter iter;
 	rope_iter_create(&iter, rope);
@@ -670,7 +673,7 @@ rope_traverse(struct rope *rope, void (*visit_leaf)(rope_data_t, size_t))
 	     leaf != NULL;
 	     leaf = rope_iter_next(&iter)) {
 
-		visit_leaf(leaf->data, leaf->leaf_size);
+		visit_leaf(leaf->data, leaf->leaf_size, cb_arg);
 	}
 }
 
@@ -684,7 +687,7 @@ rope_check(struct rope *rope)
 }
 
 static void
-rope_node_print(struct rope_node *node, void (*print)(rope_data_t, size_t),
+rope_node_print(struct rope_node *node, rope_visit_f print, void *cb_arg,
 		const char *prefix, int dir)
 {
 	const char *conn[] = { "┌──", "└──" };
@@ -697,7 +700,7 @@ rope_node_print(struct rope_node *node, void (*print)(rope_data_t, size_t),
 	if (node && (node->link[0] || node->link[1])) {
 		snprintf(child_prefix, child_prefix_len - 1,
 			 "%s%s", prefix, padding[!dir]);
-		rope_node_print(node->link[0], print, child_prefix, 0);
+		rope_node_print(node->link[0], print, cb_arg, child_prefix, 0);
 	}
 
 	snprintf(child_prefix, child_prefix_len - 1, "%s%s",
@@ -710,11 +713,12 @@ rope_node_print(struct rope_node *node, void (*print)(rope_data_t, size_t),
 
 		printf("{ len = %zu, height = %d, data = '",
 		       (size_t) node->leaf_size, node->height);
-		print(node->data, node->leaf_size);
+		print(node->data, node->leaf_size, cb_arg);
 		printf("'}\n");
 
 		if (node->link[0] || node->link[1])
-			rope_node_print(node->link[1], print, child_prefix, 1);
+			rope_node_print(node->link[1], print, cb_arg,
+					child_prefix, 1);
 	}
 
 	free(child_prefix);
@@ -722,12 +726,12 @@ rope_node_print(struct rope_node *node, void (*print)(rope_data_t, size_t),
 
 /** Pretty print a rope. */
 static inline void
-rope_pretty_print(struct rope *rope, void (*print_leaf)(rope_data_t, size_t))
+rope_pretty_print(struct rope *rope, rope_visit_f print_leaf, void *cb_arg)
 {
 	printf("size = %zu\nstring = '", (size_t) rope_size(rope));
-	rope_traverse(rope, print_leaf);
+	rope_traverse(rope, print_leaf, cb_arg);
 	printf("'\n");
-	rope_node_print(rope->root, print_leaf, "", true);
+	rope_node_print(rope->root, print_leaf, cb_arg, "", true);
 	printf("\n");
 }
 
@@ -762,6 +766,7 @@ rope_pretty_print(struct rope *rope, void (*print_leaf)(rope_data_t, size_t))
 #undef rope_iter_start
 #undef rope_iter_next
 #undef rope_iter_delete
+#undef rope_visit_f
 #undef rope_traverse
 #undef rope_check
 #undef rope_node_print

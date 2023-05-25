@@ -103,13 +103,6 @@ xrow_update_array_item_create(struct xrow_update_array_item *item,
 	item->tail_size = tail_size;
 }
 
-/** Rope allocator for nodes, paths, items etc. */
-static inline void *
-xrow_update_alloc(struct region *region, size_t size)
-{
-	return xregion_aligned_alloc(region, size, alignof(uint64_t));
-}
-
 /** Split a range of fields in two. */
 static struct xrow_update_array_item *
 xrow_update_array_item_split(struct region *region,
