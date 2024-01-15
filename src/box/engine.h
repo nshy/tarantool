@@ -93,7 +93,7 @@ engine_backup_cb(const char *path, void *arg);
 
 struct engine_vtab {
 	/** Destroy an engine instance. */
-	void (*shutdown)(struct engine *);
+	void (*free)(struct engine *);
 	/** Allocate a new space instance. */
 	struct space *(*create_space)(struct engine *engine,
 			struct space_def *def, struct rlist *key_list);
@@ -396,10 +396,10 @@ engine_read_view_delete(struct engine_read_view *rv)
 }
 
 /**
- * Shutdown all engine factories.
+ * Free all engines.
  */
 void
-engine_shutdown(void);
+engine_free(void);
 
 /**
  * Called before switching the instance to read-only mode.

@@ -5876,7 +5876,7 @@ box_storage_free(void)
 	iproto_free();
 	replication_free();
 	gc_free();
-	engine_shutdown();
+	engine_free();
 	/* schema_free(); */
 	wal_free();
 	flightrec_free();
