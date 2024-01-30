@@ -174,6 +174,7 @@ blackhole_engine_create_space(struct engine *engine, struct space_def *def,
 
 static const struct engine_vtab blackhole_engine_vtab = {
 	/* .free = */ blackhole_engine_free,
+	/* .shutdown = */ NULL,
 	/* .create_space = */ blackhole_engine_create_space,
 	/* .create_read_view = */ generic_engine_create_read_view,
 	/* .prepare_join = */ generic_engine_prepare_join,

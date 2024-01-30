@@ -69,6 +69,16 @@ engine_by_name(const char *name)
 }
 
 void
+engine_shutdown(void)
+{
+	struct engine *engine, *tmp;
+	rlist_foreach_entry_safe(engine, &engines, link, tmp) {
+		if (engine->vtab->shutdown != NULL)
+			engine->vtab->shutdown(engine);
+	}
+}
+
+void
 engine_free(void)
 {
 	struct engine *engine, *tmp;

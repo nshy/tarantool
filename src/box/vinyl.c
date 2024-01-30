@@ -2600,6 +2600,11 @@ vy_env_dump_complete_cb(struct vy_scheduler *scheduler,
 
 static struct vy_squash_queue *
 vy_squash_queue_new(void);
+
+/** Stop squash queue working fiber. */
+static void
+vy_squash_queue_shutdown(struct vy_squash_queue *q);
+
 static void
 vy_squash_queue_delete(struct vy_squash_queue *q);
 static void
@@ -2724,6 +2729,16 @@ vinyl_engine_free(struct engine *engine)
 {
 	struct vy_env *env = vy_env(engine);
 	vy_env_delete(env);
+}
+
+/** Vinyl shutdown. Shutdown is stopping all internal fibers/threads. */
+static void
+vinyl_engine_shutdown(struct engine *engine)
+{
+	struct vy_env *env = vy_env(engine);
+	vy_scheduler_shutdown(&env->scheduler);
+	vy_squash_queue_shutdown(env->squash_queue);
+	vy_log_shutdown();
 }
 
 void
@@ -3471,13 +3486,18 @@ vy_squash_queue_new(void)
 }
 
 static void
-vy_squash_queue_delete(struct vy_squash_queue *sq)
+vy_squash_queue_shutdown(struct vy_squash_queue *sq)
 {
 	if (sq->fiber != NULL) {
+		fiber_cancel(sq->fiber);
+		fiber_join(sq->fiber);
 		sq->fiber = NULL;
-		/* Sic: fiber_cancel() can't be used here */
-		fiber_cond_signal(&sq->cond);
 	}
+}
+
+static void
+vy_squash_queue_delete(struct vy_squash_queue *sq)
+{
 	struct vy_squash *squash, *next;
 	stailq_foreach_entry_safe(squash, next, &sq->queue, next)
 		vy_squash_delete(&sq->pool, squash);
@@ -3488,7 +3508,7 @@ static int
 vy_squash_queue_f(va_list va)
 {
 	struct vy_squash_queue *sq = va_arg(va, struct vy_squash_queue *);
-	while (sq->fiber != NULL) {
+	while (!fiber_is_cancelled()) {
 		fiber_check_gc();
 		if (stailq_empty(&sq->queue)) {
 			fiber_cond_wait(&sq->cond);
@@ -3522,6 +3542,7 @@ vy_squash_schedule(struct vy_lsm *lsm, struct vy_entry entry, void *arg)
 					     vy_squash_queue_f);
 		if (sq->fiber == NULL)
 			goto fail;
+		fiber_set_joinable(sq->fiber, true);
 		fiber_start(sq->fiber, sq);
 	}
 
@@ -4342,14 +4363,22 @@ vinyl_space_build_index(struct space *src_space, struct index *new_index,
 			if (rc != 0)
 				break;
 		}
+		ERROR_INJECT_DOUBLE(ERRINJ_BUILD_INDEX_TIMEOUT, inj->dparam > 0,
+				    thread_sleep(inj->dparam));
 		/*
 		 * Read iterator yields only when it reads runs.
 		 * Yield periodically in order not to stall the
 		 * tx thread in case there are a lot of tuples in
 		 * mems or cache.
 		 */
-		if (++loops % VY_YIELD_LOOPS == 0)
+		if (++loops % VY_YIELD_LOOPS == 0) {
 			fiber_sleep(0);
+			if (fiber_is_cancelled()) {
+				diag_set(FiberIsCancelled);
+				rc = -1;
+				break;
+			}
+		}
 		if (ctx.is_failed) {
 			diag_move(&ctx.diag, diag_get());
 			rc = -1;
@@ -4586,6 +4615,7 @@ static TRIGGER(on_replace_vinyl_deferred_delete, vy_deferred_delete_on_replace);
 
 static const struct engine_vtab vinyl_engine_vtab = {
 	/* .free = */ vinyl_engine_free,
+	/* .shutdown = */ vinyl_engine_shutdown,
 	/* .create_space = */ vinyl_engine_create_space,
 	/* .create_read_view = */ generic_engine_create_read_view,
 	/* .prepare_join = */ vinyl_engine_prepare_join,

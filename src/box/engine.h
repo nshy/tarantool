@@ -94,6 +94,11 @@ engine_backup_cb(const char *path, void *arg);
 struct engine_vtab {
 	/** Destroy an engine instance. */
 	void (*free)(struct engine *);
+	/**
+	 * Shutdown an engine instance. Shutdown is stopping all internal
+	 * fibers/threads.
+	 */
+	void (*shutdown)(struct engine *);
 	/** Allocate a new space instance. */
 	struct space *(*create_space)(struct engine *engine,
 			struct space_def *def, struct rlist *key_list);
@@ -394,6 +399,10 @@ engine_read_view_delete(struct engine_read_view *rv)
 {
 	rv->vtab->free(rv);
 }
+
+/** Shutdown all engines. Shutdown is stopping all internal fibers/threads. */
+void
+engine_shutdown(void);
 
 /**
  * Free all engines.

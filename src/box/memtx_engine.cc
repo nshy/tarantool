@@ -1371,6 +1371,7 @@ memtx_engine_memory_stat(struct engine *engine, struct engine_memory_stat *stat)
 
 static const struct engine_vtab memtx_engine_vtab = {
 	/* .free = */ memtx_engine_free,
+	/* .shutdown = */ NULL,
 	/* .create_space = */ memtx_engine_create_space,
 	/* .create_read_view = */ memtx_engine_create_read_view,
 	/* .prepare_join = */ memtx_engine_prepare_join,

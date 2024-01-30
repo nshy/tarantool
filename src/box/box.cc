@@ -5942,6 +5942,7 @@ box_storage_shutdown()
 	fiber_shutdown();
 	replication_shutdown();
 	gc_shutdown();
+	engine_shutdown();
 }
 
 void

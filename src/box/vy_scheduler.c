@@ -350,13 +350,28 @@ vy_worker_pool_start(struct vy_worker_pool *pool)
 	}
 }
 
+/**
+ * Notify worker threads of shutdown. The worker thread task in progress will
+ * be cancelled right after it is yield.
+ */
+static void
+vy_worker_pool_start_shutdown(struct vy_worker_pool *pool)
+{
+	if (pool->workers == NULL)
+		return;
+	for (int i = 0; i < pool->size; i++)
+		cbus_stop_loop(&pool->workers[i].worker_pipe);
+}
+
 static void
 vy_worker_pool_stop(struct vy_worker_pool *pool)
 {
 	assert(pool->workers != NULL);
 	for (int i = 0; i < pool->size; i++) {
 		struct vy_worker *worker = &pool->workers[i];
-		cord_cancel_and_join(&worker->cord);
+		cpipe_destroy(&worker->worker_pipe);
+		if (cord_join(&worker->cord) != 0)
+			panic_syserror("vinyl worker cord join failed");
 	}
 	free(pool->workers);
 	pool->workers = NULL;
@@ -429,6 +444,7 @@ vy_scheduler_create(struct vy_scheduler *scheduler, int write_threads,
 						      vy_scheduler_f);
 	if (scheduler->scheduler_fiber == NULL)
 		panic("failed to allocate vinyl scheduler fiber");
+	fiber_set_joinable(scheduler->scheduler_fiber, true);
 
 	fiber_cond_create(&scheduler->scheduler_cond);
 
@@ -469,14 +485,19 @@ vy_scheduler_start(struct vy_scheduler *scheduler)
 }
 
 void
+vy_scheduler_shutdown(struct vy_scheduler *scheduler)
+{
+	vy_worker_pool_start_shutdown(&scheduler->dump_pool);
+	vy_worker_pool_start_shutdown(&scheduler->compaction_pool);
+
+	fiber_cancel(scheduler->scheduler_fiber);
+	fiber_join(scheduler->scheduler_fiber);
+	scheduler->scheduler_fiber = NULL;
+}
+
+void
 vy_scheduler_destroy(struct vy_scheduler *scheduler)
 {
-	/* Stop scheduler fiber. */
-	scheduler->scheduler_fiber = NULL;
-	/* Sic: fiber_cancel() can't be used here. */
-	fiber_cond_signal(&scheduler->dump_cond);
-	fiber_cond_signal(&scheduler->scheduler_cond);
-
 	vy_worker_pool_destroy(&scheduler->dump_pool);
 	vy_worker_pool_destroy(&scheduler->compaction_pool);
 	diag_destroy(&scheduler->diag);
@@ -598,8 +619,13 @@ vy_scheduler_dump(struct vy_scheduler *scheduler)
 	 * We must not start dump if checkpoint is in progress
 	 * so first wait for checkpoint to complete.
 	 */
-	while (scheduler->checkpoint_in_progress)
+	while (scheduler->checkpoint_in_progress) {
 		fiber_cond_wait(&scheduler->dump_cond);
+		if (fiber_is_cancelled()) {
+			diag_set(FiberIsCancelled);
+			return -1;
+		}
+	}
 
 	/* Trigger dump. */
 	if (!vy_scheduler_dump_in_progress(scheduler))
@@ -616,6 +642,10 @@ vy_scheduler_dump(struct vy_scheduler *scheduler)
 			return -1;
 		}
 		fiber_cond_wait(&scheduler->dump_cond);
+		if (fiber_is_cancelled()) {
+			diag_set(FiberIsCancelled);
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -2001,7 +2031,7 @@ vy_scheduler_f(va_list va)
 {
 	struct vy_scheduler *scheduler = va_arg(va, struct vy_scheduler *);
 
-	while (scheduler->scheduler_fiber != NULL) {
+	while (true) {
 		struct stailq processed_tasks;
 		struct vy_task *task, *next;
 		int tasks_failed = 0, tasks_done = 0;
@@ -2035,6 +2065,12 @@ vy_scheduler_f(va_list va)
 			 * and recheck the processed_tasks in order not
 			 * to lose a wakeup event and hang for good.
 			 */
+			continue;
+		}
+		if (fiber_is_cancelled()) {
+			if (scheduler->stat.tasks_inprogress == 0)
+				break;
+			fiber_cond_wait(&scheduler->scheduler_cond);
 			continue;
 		}
 		/* Throttle for a while if a task failed. */

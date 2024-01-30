@@ -187,6 +187,10 @@ vy_scheduler_create(struct vy_scheduler *scheduler, int write_threads,
 void
 vy_scheduler_start(struct vy_scheduler *scheduler);
 
+/** Shutdown scheduler. Shutdown is stopping all internal fibers/threads. */
+void
+vy_scheduler_shutdown(struct vy_scheduler *scheduler);
+
 /**
  * Destroy a scheduler instance.
  */

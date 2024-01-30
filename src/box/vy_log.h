@@ -442,6 +442,10 @@ struct vy_slice_recovery_info {
 void
 vy_log_init(const char *dir);
 
+/** Shutdown metadata log. Shutdown is stopping the subsystem fibers. */
+void
+vy_log_shutdown(void);
+
 /**
  * Destroy the metadata log.
  */

@@ -89,6 +89,7 @@ service_engine_create_space(struct engine *engine, struct space_def *def,
 
 static const struct engine_vtab service_engine_vtab = {
 	/* .free = */ service_engine_free,
+	/* .shutdown = */ NULL,
 	/* .create_space = */ service_engine_create_space,
 	/* .create_read_view = */ generic_engine_create_read_view,
 	/* .prepare_join = */ generic_engine_prepare_join,
