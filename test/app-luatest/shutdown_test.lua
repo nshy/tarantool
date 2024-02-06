@@ -1,6 +1,8 @@
 local server = require('luatest.server')
+local utils = require('luatest.utils')
 local fiber = require('fiber')
 local fio = require('fio')
+local popen = require('popen')
 local t = require('luatest')
 
 local g = t.group()
@@ -292,4 +294,68 @@ g_vinyl.test_shutdown_vinyl_index_build = function(cg)
         end)
     end)
     test_no_hang_on_shutdown(cg.server)
+end
+
+-- Luatest server currently does not allow to check process exit code.
+local g_crash = t.group('crash')
+
+g_crash.before_each(function(cg)
+    local id = ('%s-%s'):format('server', utils.generate_id())
+    cg.workdir = fio.pathjoin(server.vardir, id)
+    fio.mkdir(cg.workdir)
+end)
+
+g_crash.after_each(function(cg)
+    if cg.handle ~= nil then
+        cg.handle:close()
+    end
+    cg.handle = nil
+end)
+
+local tarantool = arg[-1]
+
+-- Test shutdown does not hang due to memtx space snapshot in progress.
+g_crash.test_shutdown_during_snapshot_on_signal = function(cg)
+    t.tarantool.skip_if_not_debug()
+    local script = [[
+        local fiber = require('fiber')
+        local fio = require('fio')
+
+        local workdir = os.getenv('TARANTOOL_WORKDIR')
+        fio.chdir(workdir)
+        local log = fio.pathjoin(workdir, 'server.log')
+        box.cfg{log = log}
+        box.schema.create_space('test')
+        box.space.test:create_index('pk')
+        box.begin()
+        for i=1,10000 do
+            box.space.test:insert{i}
+        end
+        box.commit()
+        box.error.injection.set('ERRINJ_SNAP_WRITE_TIMEOUT', 0.01)
+        print('ready')
+        io.stdout:flush()
+    ]]
+    local handle, err = popen.new({tarantool, '-e', script},
+                                   {stdin = popen.opts.DEVNULL,
+                                    stdout = popen.opts.PIPE,
+                                    stderr = popen.opts.DEVNULL,
+                                    env = {TARANTOOL_WORKDIR = cg.workdir}})
+    assert(handle, err)
+    cg.handle = handle
+    local output, err = handle:read({timeout = 3})
+    assert(output, err)
+    t.assert_equals(output, "ready\n")
+    local log = fio.pathjoin(cg.workdir, 'server.log')
+    -- To drop first 'saving snapshot' entry.
+    assert(fio.truncate(log))
+    -- Start snapshot using signal.
+    assert(handle:signal(popen.signal.SIGUSR1))
+    t.helpers.retrying({}, function()
+        t.assert(server.grep_log(nil, 'saving snapshot', nil, {filename = log}))
+    end)
+    assert(handle:signal(popen.signal.SIGTERM))
+    local status = handle:wait()
+    t.assert_equals(status.state, 'exited')
+    t.assert_equals(status.exit_code, 0)
 end

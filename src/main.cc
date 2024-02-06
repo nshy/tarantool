@@ -113,6 +113,9 @@ static int exit_code = 0;
 
 char tarantool_path[PATH_MAX];
 
+/** Fiber creating checkpoint initiated by SIGUSR1 signal. */
+static struct fiber *sig_checkpoint_fiber;
+
 /**
  * We need to keep clock data locally to report uptime without binding
  * to libev and etc. Because we're reporting information at the moment
@@ -135,6 +138,7 @@ sig_checkpoint_f(va_list ap)
 	(void)ap;
 	if (box_checkpoint() != 0)
 		diag_log();
+	sig_checkpoint_fiber = NULL;
 	return 0;
 }
 
@@ -142,12 +146,33 @@ static void
 sig_checkpoint(ev_loop * /* loop */, struct ev_signal * /* w */,
 	     int /* revents */)
 {
-	struct fiber *f = fiber_new_system("checkpoint", sig_checkpoint_f);
-	if (f == NULL) {
+	if (sig_checkpoint_fiber != NULL) {
+		say_warn("snapshot is in progress");
+		return;
+	}
+	if (shutdown_started)
+		return;
+	sig_checkpoint_fiber = fiber_new_system("checkpoint", sig_checkpoint_f);
+	if (sig_checkpoint_fiber == NULL) {
 		say_warn("failed to allocate checkpoint fiber");
 		return;
 	}
-	fiber_wakeup(f);
+	fiber_wakeup(sig_checkpoint_fiber);
+}
+
+/**
+ * Shutdown fiber which run checkpoint started by signal. Shutdown is cancel
+ * and wait finishing.
+ */
+static void
+sig_checkpoint_shutdown(void)
+{
+	if (sig_checkpoint_fiber != NULL) {
+		fiber_cancel(sig_checkpoint_fiber);
+		while (sig_checkpoint_fiber != NULL)
+			fiber_wait_on_deadline(sig_checkpoint_fiber,
+					       TIMEOUT_INFINITY);
+	}
 }
 
 static int
@@ -171,6 +196,7 @@ on_shutdown_f(va_list ap)
 		diag_log();
 		diag_clear(diag_get());
 	}
+	sig_checkpoint_shutdown();
 	box_shutdown();
 	shutdown_finished = true;
 	ev_break(loop(), EVBREAK_ALL);
