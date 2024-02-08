@@ -487,6 +487,12 @@ fiber_call_impl(struct fiber *callee)
 	struct fiber *caller = fiber();
 	struct cord *cord = cord();
 
+	if (unlikely(callee->flags & FIBER_IS_FREEZED)) {
+		callee = callee->caller;
+		if (callee == &cord()->sched)
+			return;
+	}
+
 	/* Ensure we aren't switching to a fiber parked in fiber_loop */
 	assert(callee->f != NULL && callee->fid != 0);
 	assert(callee->flags & FIBER_IS_READY || callee == &cord->sched);
@@ -568,7 +574,8 @@ fiber_make_ready(struct fiber *f)
 	 * the 'make ready' request is considered complete and it must be
 	 * removed.
 	 */
-	assert((f->flags & (FIBER_IS_DEAD | FIBER_IS_READY)) == 0);
+	assert((f->flags & (FIBER_IS_DEAD | FIBER_IS_READY |
+			    FIBER_IS_FREEZED)) == 0);
 	struct cord *cord = cord();
 	if (rlist_empty(&cord->ready)) {
 		/*
@@ -621,7 +628,8 @@ fiber_wakeup(struct fiber *f)
 	 */
 	assert((f->flags & FIBER_IS_DEAD) == 0 ||
 	       (f->flags & FIBER_IS_JOINABLE) != 0);
-	const int no_flags = FIBER_IS_READY | FIBER_IS_DEAD | FIBER_IS_RUNNING;
+	const int no_flags = FIBER_IS_READY | FIBER_IS_DEAD | FIBER_IS_RUNNING |
+			     FIBER_IS_FREEZED;
 	if ((f->flags & no_flags) == 0)
 		fiber_make_ready(f);
 }
@@ -1865,6 +1873,7 @@ cord_create(struct cord *cord, const char *name)
 	cord->fiber = &cord->sched;
 	cord->sched.flags = FIBER_IS_RUNNING | FIBER_IS_SYSTEM;
 	cord->sched.max_slice = zero_slice;
+	cord->sched.caller = NULL;
 	cord->max_slice = default_slice;
 
 	cord->next_fid = FIBER_ID_MAX_RESERVED + 1;
@@ -2377,6 +2386,9 @@ fiber_set_system(struct fiber *f, bool yesno)
 	}
 }
 
+/** Timeout on waiting for client fibers to finish. */
+#define FIBER_SHUTDOWN_TIMEOUT 1.0 /* seconds */
+
 void
 fiber_shutdown(void)
 {
@@ -2388,7 +2400,14 @@ fiber_shutdown(void)
 			fiber_cancel(fiber);
 	}
 	cord()->shutdown_fiber = fiber();
-	while (cord()->client_fiber_count != 0)
-		fiber_yield();
+	double deadline = ev_monotonic_now(loop()) + FIBER_SHUTDOWN_TIMEOUT;
+	while (cord()->client_fiber_count != 0) {
+		if (fiber_yield_deadline(deadline))
+			break;
+	}
+	rlist_foreach_entry(fiber, &cord()->alive, link) {
+		if (!(fiber->flags & FIBER_IS_SYSTEM))
+			fiber->flags |= FIBER_IS_FREEZED;
+	}
 	cord()->shutdown_fiber = NULL;
 }

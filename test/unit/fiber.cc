@@ -694,6 +694,24 @@ hang_on_cancel_f(va_list ap)
 }
 
 static int
+hang_client_on_cancel_f(va_list ap)
+{
+	while (!fiber_is_cancelled())
+		fiber_yield();
+	/*
+	 * In next block we try to test that if fiber is freezed it will not
+	 * get executed even if it is already placed in ready queue.
+	 *
+	 * Looks like this situation is not possible now though. It is good
+	 * to have this test yet. If libev will change it will break
+	 * without the corresponding ready list cleanup in fiber_shutdown().
+	 */
+	while (true)
+		fiber_sleep(0);
+	return 0;
+}
+
+static int
 new_fiber_on_shudown_f(va_list ap)
 {
 	while (!fiber_is_cancelled())
@@ -721,6 +739,8 @@ fiber_test_shutdown(void)
 	struct fiber *fiber4 = fiber_new("fiber4", new_fiber_on_shudown_f);
 	fail_unless(fiber4 != NULL);
 	fiber_set_joinable(fiber4, true);
+	struct fiber *fiber6 = fiber_new("fiber6", hang_client_on_cancel_f);
+	fail_unless(fiber6 != NULL);
 
 	fiber_shutdown();
 
@@ -728,6 +748,8 @@ fiber_test_shutdown(void)
 	fail_unless((fiber2->flags & FIBER_IS_DEAD) == 0);
 	fail_unless((fiber3->flags & FIBER_IS_DEAD) == 0);
 	fail_unless((fiber4->flags & FIBER_IS_DEAD) != 0);
+	fail_unless((fiber6->flags & FIBER_IS_DEAD) == 0);
+	fail_unless((fiber6->flags & FIBER_IS_FREEZED) != 0);
 
 	fiber_join(fiber1);
 	fiber_join(fiber4);
@@ -741,6 +763,12 @@ fiber_test_shutdown(void)
 	fail_unless(!diag_is_empty(diag_get()));
 	fail_unless(strcmp(diag_last_error(diag_get())->errmsg,
 			   "fiber is cancelled") == 0);
+
+	/* Test we cannot schedule freezed fiber. */
+	int csw = fiber6->csw;
+	fiber_wakeup(fiber6);
+	fiber_sleep(0);
+	fail_unless(fiber6->csw == csw);
 
 	header();
 }

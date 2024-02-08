@@ -175,6 +175,10 @@ enum {
 	 * once again nor can its joinability be changed.
 	 */
 	FIBER_JOIN_BEEN_INVOKED = 1 << 9,
+	/**
+	 * Fiber will not be scheduled anymore.
+	 */
+	FIBER_IS_FREEZED	= 1 << 10,
 	FIBER_DEFAULT_FLAGS	= 0
 };
 
