@@ -590,6 +590,7 @@ g_error_details.test_error_details = function(cg)
             if v.message:startswith(errmsg_prefix) then
                 v.message = v.message:sub(#errmsg_prefix + 1)
             end
+            v.details = nil
             if prev == nil then
                 actual = v
             else

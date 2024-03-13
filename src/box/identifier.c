@@ -65,6 +65,7 @@ identifier_check(const char *str, int str_len)
 	}
 	return 0;
 error:
-	diag_set(ClientError, ER_IDENTIFIER, tt_cstr(str, str_len));
+	diag_set(ClientError, ER_IDENTIFIER, tt_cstr(str, str_len),
+		 "expected printable symbols only");
 	return -1;
 }

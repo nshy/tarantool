@@ -376,8 +376,7 @@ memtx_engine_recover_snapshot_row(struct xrow_header *row,
 			return memtx_engine_recover_raft(row);
 		if (row->type == IPROTO_RAFT_PROMOTE)
 			return memtx_engine_recover_synchro(row);
-		diag_set(ClientError, ER_UNKNOWN_REQUEST_TYPE,
-			 (uint32_t) row->type);
+		diag_set(ClientError, ER_UNKNOWN_REQUEST_TYPE, row->type);
 		return -1;
 	}
 	struct request request;
@@ -1819,7 +1818,8 @@ memtx_tuple_new_raw_impl(struct tuple_format *format, const char *data,
 		goto end;
 	});
 	if (unlikely(total > memtx->max_tuple_size)) {
-		diag_set(ClientError, ER_MEMTX_MAX_TUPLE_SIZE, total);
+		diag_set(ClientError, ER_MEMTX_MAX_TUPLE_SIZE, total,
+			 memtx->max_tuple_size);
 		error_log(diag_last_error(diag_get()));
 		goto end;
 	}

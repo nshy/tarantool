@@ -1844,7 +1844,7 @@ iproto_msg_prepare(struct iproto_msg *msg, const char **pos, const char *reqend)
 			cmsg_init(&msg->base, iproto_thread->override_route);
 			return;
 		}
-		diag_set(ClientError, ER_UNKNOWN_REQUEST_TYPE, (uint32_t)type);
+		diag_set(ClientError, ER_UNKNOWN_REQUEST_TYPE, type);
 	}
 error:
 	/** Log and send the error. */

@@ -775,7 +775,7 @@ applier_wait_snapshot(struct applier *applier)
 			xrow_decode_error_xc(&row); /* re-throw error */
 		} else if (row.type != IPROTO_OK) {
 			tnt_raise(ClientError, ER_UNKNOWN_REQUEST_TYPE,
-				  (uint32_t) row.type);
+				  row.type);
 		}
 		/*
 		 * Start vclock. The vclock of the checkpoint
@@ -809,7 +809,7 @@ applier_wait_snapshot(struct applier *applier)
 				box_raft_recover(&req);
 			} else if (row.type != IPROTO_JOIN_SNAPSHOT) {
 				tnt_raise(ClientError, ER_UNKNOWN_REQUEST_TYPE,
-					  (uint32_t)row.type);
+					  row.type);
 			}
 		} while (row.type != IPROTO_JOIN_SNAPSHOT);
 		coio_read_xrow(io, ibuf, &row);
@@ -846,7 +846,7 @@ applier_wait_snapshot(struct applier *applier)
 			xrow_decode_error_xc(&row);  /* rethrow error */
 		} else {
 			tnt_raise(ClientError, ER_UNKNOWN_REQUEST_TYPE,
-				  (uint32_t) row.type);
+				  row.type);
 		}
 		coio_read_xrow(io, ibuf, &row);
 	}

@@ -149,7 +149,8 @@ sqlCheckIdentifierName(Parse *pParse, char *zName)
 	ssize_t len = strlen(zName);
 	if (len > BOX_NAME_MAX) {
 		diag_set(ClientError, ER_IDENTIFIER,
-			 tt_cstr(zName, BOX_INVALID_NAME_MAX));
+			 tt_cstr(zName, BOX_INVALID_NAME_MAX),
+			 "too long");
 		pParse->is_aborted = true;
 		return -1;
 	}
@@ -571,7 +572,8 @@ sql_add_term_default(struct Parse *parser, struct ExprSpan *expr_span)
 			const char *str = expr->pLeft->u.zToken;
 			if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))
 				errcode = ER_HEX_LITERAL_MAX;
-			diag_set(ClientError, errcode, "-", str);
+			diag_set(ClientError, errcode,
+				 tt_sprintf("%s%s", "-", str));
 			parser->is_aborted = true;
 			break;
 		}
@@ -586,7 +588,7 @@ sql_add_term_default(struct Parse *parser, struct ExprSpan *expr_span)
 		const char *str = expr->u.zToken;
 		if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))
 			errcode = ER_HEX_LITERAL_MAX;
-		diag_set(ClientError, errcode, "", str);
+		diag_set(ClientError, errcode, str);
 		parser->is_aborted = true;
 		break;
 	}

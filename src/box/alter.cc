@@ -202,9 +202,11 @@ err:
 		mp_next(&data);
 		p += snprintf(p, e - p, i ? ", %s" : "%s", mp_type_strs[type]);
 	}
-	diag_set(ClientError, ER_WRONG_INDEX_RECORD, got,
-		  "space id (unsigned), index id (unsigned), name (string), "\
-		  "type (string), options (map), parts (array)");
+	diag_set(ClientError, ER_WRONG_INDEX_RECORD,
+		 tt_sprintf("got [%s] tuple while expected "
+			    "[space id (unsigned), index id (unsigned),"
+			    " name (string), type (string), options (map),"
+			    " parts (array)]", got));
 	return -1;
 }
 
@@ -445,7 +447,7 @@ space_opts_decode(struct space_opts *opts, const char *map,
 	space_opts_create(opts);
 	opts->type = SPACE_TYPE_DEFAULT;
 	if (opts_decode(opts, space_opts_reg, &map, region) != 0) {
-		diag_set(ClientError, ER_WRONG_SPACE_OPTIONS,
+		diag_add(ClientError, ER_WRONG_SPACE_OPTIONS,
 			 diag_last_error(diag_get())->errmsg);
 		return -1;
 	}

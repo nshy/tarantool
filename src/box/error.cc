@@ -402,7 +402,6 @@ AccessDeniedError::AccessDeniedError(const char *file, unsigned int line,
 {
 	error_format_msg(this, tnt_errcode_desc(code),
 			 access_type, object_type, object_name, user_name);
-
 	/*
 	 * Don't run the triggers when create after marshaling
 	 * through network.
@@ -413,6 +412,7 @@ AccessDeniedError::AccessDeniedError(const char *file, unsigned int line,
 	error_set_str(this, "object_type", object_type);
 	error_set_str(this, "object_name", object_name);
 	error_set_str(this, "access_type", access_type);
+	error_set_str(this, "user", user_name);
 }
 
 struct error *
