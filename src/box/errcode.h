@@ -103,6 +103,7 @@ struct errcode_record {
 	_(ER_TEST_3_ARGS, 10031,		"Test error", "f1", INT, "f2", INT, "f3", INT) \
 	_(ER_TEST_4_ARGS, 10032,		"Test error", "f1", INT, "f2", INT, "f3", INT, "f4", INT) \
 	_(ER_TEST_5_ARGS, 10033,		"Test error", "f1", INT, "f2", INT, "f3", INT, "f4", INT, "f5", INT) \
+	_(ER_TEST_6_ARGS, 10034,		"Test error", "f1", INT, "f2", INT, "f3", INT, "f4", INT, "f5", INT, "f6", INT) \
 	_(ER_TEST_FORMAT_MSG, 10050,		"Test error %i %s", "f1", INT, "f2", STRING) \
 	_(ER_TEST_FORMAT_MSG_LESS, 10051,	"Test error %i %s", "f1", INT, "f2", STRING, "f3", INT) \
 	_(ER_TEST_OMIT_TYPE_CHAR, 10060,	"Test error %c", NULL, CHAR) \
