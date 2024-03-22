@@ -172,50 +172,66 @@ client_error_create(struct error *e, va_list ap)
 	error_vformat_msg(e, r->errdesc, ap_copy);
 	va_end(ap_copy);
 	for (int i = 0; i < r->errfields_count; i++) {
+		const char *name = r->errfields[i].name;
 		switch (r->errfields[i].type) {
 		case ERRCODE_FIELD_TYPE_CHAR: {
 			char buf[2] = {(char)va_arg(ap, int), '\0'};
-			error_set_str(e, r->errfields[i].name, buf);
+			if (name != NULL)
+				error_set_str(e, name, buf);
 			break;
 		}
-		case ERRCODE_FIELD_TYPE_INT:
-			error_set_int(e, r->errfields[i].name,
-				      va_arg(ap, int));
+		case ERRCODE_FIELD_TYPE_INT: {
+			int v = va_arg(ap, int);
+			if (name != NULL)
+				error_set_int(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_UINT:
-			error_set_uint(e, r->errfields[i].name,
-				       va_arg(ap, unsigned));
+		}
+		case ERRCODE_FIELD_TYPE_UINT: {
+			unsigned v = va_arg(ap, unsigned);
+			if (name != NULL)
+				error_set_uint(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_LONG:
-			error_set_int(e, r->errfields[i].name,
-				      va_arg(ap, long));
+		}
+		case ERRCODE_FIELD_TYPE_LONG: {
+			long v = va_arg(ap, long);
+			if (name != NULL)
+				error_set_int(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_ULONG:
-			error_set_uint(e, r->errfields[i].name,
-				       va_arg(ap, unsigned long));
+		}
+		case ERRCODE_FIELD_TYPE_ULONG: {
+			unsigned long v = va_arg(ap, unsigned long);
+			if (name != NULL)
+				error_set_uint(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_LLONG:
-			error_set_int(e, r->errfields[i].name,
-				      va_arg(ap, long long));
+		}
+		case ERRCODE_FIELD_TYPE_LLONG: {
+			long long v = va_arg(ap, long long);
+			if (name != NULL)
+				error_set_int(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_ULLONG:
-			error_set_uint(e, r->errfields[i].name,
-				       va_arg(ap, unsigned long long));
+		}
+		case ERRCODE_FIELD_TYPE_ULLONG: {
+			unsigned long long v = va_arg(ap, unsigned long long);
+			if (name != NULL)
+				error_set_uint(e, name, v);
 			break;
-		case ERRCODE_FIELD_TYPE_STRING:
-			error_set_str(e, r->errfields[i].name,
-				      va_arg(ap, const char *));
+		}
+		case ERRCODE_FIELD_TYPE_STRING: {
+			const char *s = va_arg(ap, const char *);
+			if (name != NULL)
+				error_set_str(e, name, s);
 			break;
+		}
 		case ERRCODE_FIELD_TYPE_MSGPACK: {
 			const char *mp = va_arg(ap, const char *);
 			const char *mp_end = mp;
 			mp_next(&mp_end);
-			error_set_mp(e, r->errfields[i].name, mp, mp_end - mp);
+			error_set_mp(e, name, mp, mp_end - mp);
 			break;
 		}
 		case ERRCODE_FIELD_TYPE_TUPLE: {
 			struct tuple *tuple = va_arg(ap, struct tuple *);
-			error_set_mp(e, r->errfields[i].name, tuple_data(tuple),
+			error_set_mp(e, name, tuple_data(tuple),
 				     tuple_bsize(tuple));
 			break;
 		}
