@@ -218,19 +218,24 @@ client_error_create(struct error *e, va_list ap)
 		}
 		case ERRCODE_FIELD_TYPE_STRING: {
 			const char *s = va_arg(ap, const char *);
-			if (name != NULL)
+			if (name != NULL) {
+				if (s == NULL)
+					s = "(null)";
 				error_set_str(e, name, s);
+			}
 			break;
 		}
 		case ERRCODE_FIELD_TYPE_MSGPACK: {
 			const char *mp = va_arg(ap, const char *);
 			const char *mp_end = mp;
+			assert(mp != NULL);
 			mp_next(&mp_end);
 			error_set_mp(e, name, mp, mp_end - mp);
 			break;
 		}
 		case ERRCODE_FIELD_TYPE_TUPLE: {
 			struct tuple *tuple = va_arg(ap, struct tuple *);
+			assert(tuple != NULL);
 			error_set_mp(e, name, tuple_data(tuple),
 				     tuple_bsize(tuple));
 			break;
