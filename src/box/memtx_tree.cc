@@ -922,6 +922,8 @@ memtx_tree_index_gc_run(struct memtx_gc_task *task, bool *done)
 			tuple_unref((struct tuple *)res->hint);
 		else
 			tuple_unref(res->tuple);
+		ERROR_INJECT_DOUBLE(ERRINJ_MEMTX_GC_TIMEOUT, inj->dparam > 0,
+				    thread_sleep(inj->dparam));
 		if (++loops >= YIELD_LOOPS) {
 			*done = false;
 			return;

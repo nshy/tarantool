@@ -4,6 +4,7 @@ local justrun = require('test.justrun')
 local fio = require('fio')
 local popen = require('popen')
 local fiber = require('fiber')
+local tarantool = require('tarantool')
 local t = require('luatest')
 
 -- Luatest server currently does not allow to check process exit code.
@@ -22,7 +23,7 @@ g_crash.after_each(function(cg)
     cg.handle = nil
 end)
 
-local tarantool = arg[-1]
+local tarantool_bin = arg[-1]
 
 -- Test there is no assertion on shutdown during snapshot
 -- that triggered by SIGUSR1.
@@ -49,7 +50,7 @@ g_crash.test_shutdown_during_snapshot_on_signal = function(cg)
     -- Inherit environment to inherit ASAN suppressions.
     local env = table.copy(os.environ())
     env.TARANTOOL_WORKDIR = cg.workdir
-    local handle, err = popen.new({tarantool, '-e', script},
+    local handle, err = popen.new({tarantool_bin, '-e', script},
                                    {stdin = popen.opts.DEVNULL,
                                     stdout = popen.opts.DEVNULL,
                                     stderr = popen.opts.DEVNULL,
@@ -170,4 +171,63 @@ g.test_shutdown_of_hanging_client_fiber = function(cg)
     test_no_hang_on_shutdown(cg.server)
     t.assert(cg.server:grep_log('cannot gracefully shutdown client fibers', nil,
              {filename = log}))
+end
+
+-- Test we don't leak tuples if shutdown during active memtx gc.
+-- We do memory leak check only for ASAN builds. ERRINJ_MEMTX_GC_TIMEOUT
+-- and number of tuples inserted are tuned so that both number of yields
+-- of memtx gc fiber and time required to free tuples is large enough
+-- so that we cover case when not all tuples are freed at the time
+-- memtx shutdown started.
+g.test_shutdown_memtx_gc_free_tuples = function(cg)
+    t.tarantool.skip_if_not_debug()
+    t.skip_if(not tarantool.build.asan, 'ASAN build required')
+    cg.server:exec(function()
+        local fiber = require('fiber')
+        box.schema.create_space('test')
+        box.space.test:create_index('pk')
+        box.error.injection.set('ERRINJ_MEMTX_GC_TIMEOUT', 0.001)
+        fiber.set_slice(100)
+        box.begin()
+        for i=1,10000 do
+            box.space.test:insert{i}
+        end
+        box.commit()
+        box.space.test.index.pk:drop()
+    end)
+    server:stop()
+end
+
+local g_index = t.group('index', {{index_type = 'TREE'}, {index_type = 'HASH'}})
+
+g_index.before_each(function(cg)
+    cg.server = server:new()
+    cg.server:start()
+end)
+
+g_index.after_each(function(cg)
+    if cg.server ~= nil then
+        cg.server:drop()
+    end
+end)
+
+-- Test for non ASAN builds we shutdown fast ie we don't wait for all tuples to
+-- be freed.
+g_index.test_shutdown_memtx_gc_cancellable = function(cg)
+    t.tarantool.skip_if_not_debug()
+    t.skip_if(tarantool.build.asan, 'non ASAN build required')
+    cg.server:exec(function(index_type)
+        local fiber = require('fiber')
+        box.schema.create_space('test')
+        box.space.test:create_index('pk', {type = index_type})
+        box.error.injection.set('ERRINJ_MEMTX_GC_TIMEOUT', 0.01)
+        fiber.set_slice(100)
+        box.begin()
+        for i=1,10000 do
+            box.space.test:insert{i}
+        end
+        box.commit()
+        box.space.test.index.pk:drop()
+    end, {cg.params.index_type})
+    test_no_hang_on_shutdown(cg.server)
 end
