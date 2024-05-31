@@ -93,6 +93,12 @@ void
 fiber_pool_set_max_size(struct fiber_pool *pool, int new_max_size);
 
 /**
+ * Shutdown fiber pool. Finish all idle fiber left.
+ */
+void
+fiber_pool_shutdown(struct fiber_pool *pool);
+
+/**
  * Destroy a fiber pool
  */
 void

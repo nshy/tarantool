@@ -6028,7 +6028,7 @@ box_storage_free(void)
 	flightrec_free();
 	audit_log_free();
 	sql_built_in_functions_cache_free();
-	/* fiber_pool_destroy(&tx_fiber_pool); */
+	fiber_pool_destroy(&tx_fiber_pool);
 	is_storage_initialized = false;
 }
 
@@ -6084,25 +6084,31 @@ box_storage_shutdown()
 	if (!is_storage_initialized)
 		return;
 	is_storage_shutdown = true;
-	if (iproto_shutdown(box_shutdown_timeout) != 0) {
-		diag_log();
-		panic("cannot gracefully shutdown iproto");
-	}
+	/*
+	 * Watcher should be shutdown before subsystems shutdown because
+	 * it may execute client code. It can be shutdown before or
+	 * after client fiber shutdown. Both cases are correct. But
+	 * if we do it after we may have noisy log fiber creation failure
+	 * for async watcher execution.
+	 */
 	box_watcher_shutdown();
 	/*
-	 * Finish client fibers after iproto_shutdown otherwise new fibers
-	 * can be started through new iproto requests. Also we should
-	 * finish client fibers before other subsystems shutdown so that
-	 * we won't need to handle requests from client fibers after/during
-	 * subsystem shutdown.
+	 * Finish client fibers before other subsystems shutdown so that
+	 * we won't get unexpected request to shutdown subsystems from
+	 * client code.
 	 */
 	if (fiber_shutdown(box_shutdown_timeout) != 0) {
 		diag_log();
 		panic("cannot gracefully shutdown client fibers");
 	}
+	if (iproto_shutdown(box_shutdown_timeout) != 0) {
+		diag_log();
+		panic("cannot gracefully shutdown iproto");
+	}
 	replication_shutdown();
 	gc_shutdown();
 	engine_shutdown();
+	fiber_pool_shutdown(&tx_fiber_pool);
 }
 
 void
