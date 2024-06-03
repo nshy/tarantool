@@ -67,6 +67,8 @@ static struct fiber_slice default_slice = {.warn = 0.5, .err = 1.0};
 /** Number of cord-threads still running right now. */
 static int cord_count = 0;
 
+struct rlist fiber_on_shutdown = RLIST_HEAD_INITIALIZER(fiber_on_shutdown);
+
 static inline void
 clock_stat_add_delta(struct clock_stat *stat, uint64_t clock_delta)
 {
@@ -2394,5 +2396,6 @@ fiber_shutdown(double timeout)
 		}
 	}
 	cord()->shutdown_fiber = NULL;
+	trigger_run(&fiber_on_shutdown, NULL);
 	return cord()->client_fiber_count == 0 ? 0 : -1;
 }

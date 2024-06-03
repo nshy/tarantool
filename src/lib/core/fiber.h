@@ -178,6 +178,12 @@ enum {
 	FIBER_DEFAULT_FLAGS	= 0
 };
 
+/**
+ * List of system shutdown triggers. System shutdown is called after
+ * regular shutdown event in the process on Tarantool subsystems shutdown.
+ */
+extern struct rlist fiber_on_shutdown;
+
 /** \cond public */
 
 /**
