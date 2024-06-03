@@ -288,6 +288,8 @@ struct netbox_transport {
 	 * by the user.
 	 */
 	int64_t inprogress_request_count;
+	/** Trigger for fiber shutdown event. */
+	struct trigger on_fiber_shutdown;
 };
 
 struct netbox_request {
@@ -3126,6 +3128,7 @@ netbox_worker_f(va_list ap)
 		netbox_transport_on_state_change_pcall(transport, L);
 	}
 	transport->worker = NULL;
+	trigger_clear(&transport->on_fiber_shutdown);
 	fiber_cond_broadcast(&transport->on_worker_stop);
 	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, transport->coro_ref);
 	transport->coro_ref = LUA_NOREF;
@@ -3134,6 +3137,21 @@ netbox_worker_f(va_list ap)
 	transport->self_ref = LUA_NOREF;
 	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, ref);
 	fiber()->storage.lua.stack = NULL;
+	return 0;
+}
+
+/** Finish transport worker fiber on Tarantool shutdown. */
+static int
+netbox_on_fiber_shutdown(struct trigger *trigger, void *event)
+{
+	(void)event;
+	struct netbox_transport *transport = trigger->data;
+	fiber_cancel(transport->worker);
+	/*
+	 * Caution: after return transport and trigger may be invalid because
+	 * worker may release last reference to transport.
+	 */
+	fiber_wait_dead(transport->worker, TIMEOUT_INFINITY);
 	return 0;
 }
 
@@ -3168,6 +3186,9 @@ luaT_netbox_transport_start(struct lua_State *L)
 		return luaT_error(L);
 	}
 	transport->worker->f_arg = transport;
+	trigger_create(&transport->on_fiber_shutdown, netbox_on_fiber_shutdown,
+		       transport, NULL);
+	trigger_add(&fiber_on_shutdown, &transport->on_fiber_shutdown);
 	/*
 	 * Code that needs a temporary fiber-local Lua state may save some time
 	 * and resources for creating a new state and use this one.
