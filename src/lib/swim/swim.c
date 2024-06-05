@@ -544,7 +544,21 @@ struct swim {
 	 * lines.
 	 */
 	struct swim_task round_step_task;
+	/** Trigger for fiber shutdown event. */
+	struct trigger on_fiber_shutdown;
 };
+
+/**
+ * Cancel and wait finish of an event handler fiber. That
+ * operation is not inlined in the SWIM destructor, because there
+ * is one more place, when the handler should be stopped even
+ * before SWIM deletion - quit. Quit deletes the instance only
+ * when all the 'I left' messages are sent, but it happens in a
+ * libev callback in the scheduler fiber where it is impossible
+ * to yield. So to that moment the handler should be dead already.
+ */
+static inline void
+swim_kill_event_handler(struct swim *swim);
 
 /** Put the member into a list of ACK waiters. */
 static void
@@ -1888,9 +1902,25 @@ swim_event_handler_f(va_list va)
 		}
 		swim_member_unref(m);
 	}
+	s->event_handler = NULL;
+	trigger_clear(&s->on_fiber_shutdown);
 	return 0;
 }
 
+/** Finish swim worker fiber on Tarantool shutdown. */
+static int
+swim_on_fiber_shutdown(struct trigger *trigger, void *event)
+{
+	(void)event;
+	struct swim *swim = trigger->data;
+	fiber_cancel(swim->event_handler);
+	/*
+	 * Caution: both worker fiber and swim may be invalid after the
+	 * call because there can be concurrent swim deletion.
+	 */
+	fiber_wait_dead(swim->event_handler, TIMEOUT_INFINITY);
+	return 0;
+}
 
 struct swim *
 swim_new(uint64_t generation)
@@ -1927,6 +1957,9 @@ swim_new(uint64_t generation)
 		swim_delete(swim);
 		return NULL;
 	}
+	trigger_create(&swim->on_fiber_shutdown, swim_on_fiber_shutdown,
+		       swim, NULL);
+	trigger_add(&fiber_on_shutdown, &swim->on_fiber_shutdown);
 	fiber_set_joinable(swim->event_handler, true);
 	fiber_start(swim->event_handler, swim);
 	return swim;
@@ -2190,26 +2223,11 @@ swim_size(const struct swim *swim)
 	return mh_size(swim->members);
 }
 
-/**
- * Cancel and wait finish of an event handler fiber. That
- * operation is not inlined in the SWIM destructor, because there
- * is one more place, when the handler should be stopped even
- * before SWIM deletion - quit. Quit deletes the instance only
- * when all the 'I left' messages are sent, but it happens in a
- * libev callback in the scheduler fiber where it is impossible
- * to yield. So to that moment the handler should be dead already.
- */
 static inline void
 swim_kill_event_handler(struct swim *swim)
 {
-	struct fiber *f = swim->event_handler;
-	/*
-	 * Nullify so as not to keep pointer at a fiber when it is
-	 * reused.
-	 */
-	swim->event_handler = NULL;
-	fiber_cancel(f);
-	fiber_join(f);
+	fiber_cancel(swim->event_handler);
+	fiber_join(swim->event_handler);
 }
 
 void
