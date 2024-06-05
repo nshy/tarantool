@@ -187,14 +187,61 @@ test_trigger_clear_during_run(void)
 	return check_plan();
 }
 
+static int
+nop_f(struct trigger *trigger, void *event)
+{
+	(void)trigger;
+	(void)event;
+	return 0;
+}
+
+static int
+invalidate_f(struct trigger *trigger, void *event)
+{
+	(void)event;
+	trigger_clear(trigger);
+	free(trigger);
+	return 0;
+}
+
+/**
+ * The test is intended to be run under ASAN. Test we work fine with
+ * trigger which memory is freed after run.
+ */
+static int
+test_trigger_invalid_after_run(void)
+{
+	header();
+	plan(1);
+
+	struct rlist list;
+	rlist_create(&list);
+
+	struct trigger *invalidated = xmalloc(sizeof(*invalidated));
+	trigger_create(invalidated, invalidate_f, NULL, NULL);
+	trigger_add(&list, invalidated);
+
+	struct trigger after;
+	trigger_create(&after, nop_f, NULL, NULL);
+	trigger_add(&list, &after);
+
+	trigger_run(&list, NULL);
+	trigger_destroy(&list);
+	ok(true);
+
+	footer();
+	return check_plan();
+}
+
 int
 main(void)
 {
 	memory_init();
 	fiber_init(fiber_c_invoke);
 
-	plan(1);
+	plan(2);
 	test_trigger_clear_during_run();
+	test_trigger_invalid_after_run();
 
 	fiber_free();
 	memory_free();
