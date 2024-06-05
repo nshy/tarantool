@@ -651,6 +651,70 @@ fiber_test_set_system(void)
 }
 
 static int
+sleeper_f(va_list ap)
+{
+	for (int i = 0; i < 5; i++)
+		fiber_sleep(0.1);
+	return 0;
+}
+
+static void
+fiber_test_wait_dead(void)
+{
+	header();
+
+	/* Test we can handle when fiber become invalid during dead wait. */
+	struct fiber *fiber1 = fiber_new("fiber1", noop_f);
+	uint64_t fid1 = fiber1->fid;
+	fail_unless(fiber1 != NULL);
+	fiber_wakeup(fiber1);
+	fail_unless(fiber_wait_dead(fiber1, TIMEOUT_INFINITY));
+	fail_unless(fiber_find(fid1) == NULL);
+
+	/*
+	 * Test we can handle spurious wakeups due to fiber yields
+	 * during our dead wait.
+	 */
+	struct fiber *fiber2 = fiber_new("fiber2", sleeper_f);
+	uint64_t fid2 = fiber2->fid;
+	fail_unless(fiber2 != NULL);
+	fiber_wakeup(fiber2);
+	fail_unless(fiber_wait_dead(fiber2, TIMEOUT_INFINITY));
+	fail_unless(fiber_find(fid2) == NULL);
+
+	/* Test we can handle already dead fiber. */
+	struct fiber *fiber3 = fiber_new("fiber3", noop_f);
+	fail_unless(fiber3 != NULL);
+	fiber_set_joinable(fiber3, true);
+	fiber_wakeup(fiber3);
+	fiber_sleep(0);
+	fail_unless(fiber_is_dead(fiber3));
+	fail_unless(fiber_wait_dead(fiber3, TIMEOUT_INFINITY));
+	fiber_join(fiber3);
+
+	/* Test we can handle death of joinable fiber. */
+	struct fiber *fiber4 = fiber_new("fiber4", noop_f);
+	fail_unless(fiber4 != NULL);
+	fiber_set_joinable(fiber4, true);
+	fiber_wakeup(fiber4);
+	fail_unless(fiber_wait_dead(fiber3, TIMEOUT_INFINITY));
+	fail_unless(fiber_is_dead(fiber4));
+	fiber_join(fiber4);
+
+	/* Test with timeout. */
+	struct fiber *fiber5 = fiber_new("fiber4", wait_cancel_f);
+	fail_unless(fiber5 != NULL);
+	fiber_set_joinable(fiber5, true);
+	fiber_wakeup(fiber5);
+	fail_if(fiber_wait_dead(fiber3, 0.2));
+	fail_if(fiber_is_dead(fiber5));
+	fiber_cancel(fiber5);
+	fiber_join(fiber5);
+
+	footer();
+}
+
+static int
 hang_on_cancel_f(va_list ap)
 {
 	while (!fiber_is_cancelled())
@@ -683,7 +747,7 @@ new_fiber_on_shudown_f(va_list ap)
 static void
 fiber_test_shutdown(void)
 {
-	footer();
+	header();
 
 	struct fiber *fiber1 = fiber_new("fiber1", wait_cancel_f);
 	fail_unless(fiber1 != NULL);
@@ -717,7 +781,7 @@ fiber_test_shutdown(void)
 	fail_unless(strcmp(diag_last_error(diag_get())->errmsg,
 			   "fiber is cancelled") == 0);
 
-	header();
+	footer();
 }
 
 static int
@@ -737,6 +801,7 @@ main_f(va_list ap)
 	fiber_test_leak_modes();
 	fiber_test_client_fiber_count();
 	fiber_test_set_system();
+	fiber_test_wait_dead();
 	fiber_test_shutdown();
 	ev_break(loop(), EVBREAK_ALL);
 	return 0;

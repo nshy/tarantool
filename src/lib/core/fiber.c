@@ -769,6 +769,24 @@ fiber_wait_on_deadline(struct fiber *fiber, double deadline)
 	return fiber_yield_deadline(deadline);
 }
 
+bool
+fiber_wait_dead(struct fiber *fiber, double timeout)
+{
+	double deadline = fiber_clock() + timeout;
+	uint64_t fid = fiber->fid;
+	while (!fiber_is_dead(fiber)) {
+		if (fiber_wait_on_deadline(fiber, deadline))
+			return false;
+		/*
+		 * At this point the fiber's struct may be already reused by
+		 * another fiber.
+		 */
+		if (fiber_find(fid) == NULL)
+			return true;
+	}
+	return true;
+}
+
 int
 fiber_join_timeout(struct fiber *fiber, double timeout)
 {

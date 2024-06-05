@@ -843,28 +843,19 @@ lbox_fiber_join(struct lua_State *L)
 			luaT_error(L);
 		}
 	}
-	double deadline = fiber_clock() + timeout;
 
-	while (!fiber_is_dead(fiber)) {
-		bool exceeded = fiber_wait_on_deadline(fiber, deadline);
-		/*
-		 * At this point the fiber's struct may be already reused by
-		 * another fiber.
-		 */
-		if (exceeded) {
-			diag_set(TimedOut);
-			e = diag_last_error(&fiber()->diag);
-			lua_pushboolean(L, false);
-			luaT_pusherror(L, e);
-			return 2;
-		}
-		fiber = fiber_find(fid);
-		if (fiber == NULL) {
-			diag_set(IllegalParams,
-				 "the fiber is already joined "
-				 "by concurrent fiber:join()");
-			luaT_error(L);
-		}
+	if (!fiber_wait_dead(fiber, timeout)) {
+		diag_set(TimedOut);
+		e = diag_last_error(&fiber()->diag);
+		lua_pushboolean(L, false);
+		luaT_pusherror(L, e);
+		return 2;
+	}
+	if (fiber_find(fid) == NULL) {
+		diag_set(IllegalParams,
+			 "the fiber is already joined "
+			 "by concurrent fiber:join()");
+		luaT_error(L);
 	}
 
 	/* The fiber is already dead. */

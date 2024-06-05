@@ -1171,6 +1171,20 @@ fiber_is_dead(struct fiber *f)
 	return f->flags & FIBER_IS_DEAD;
 }
 
+/**
+ * Wait until fiber is dead.
+ *
+ * XXX Use with caution. Consider fiber pointer invalid both on success
+ * and failure on timeout if fiber is not joinable or fiber is joinable
+ * but there is another fiber joining the fiber.
+ *
+ * Return:
+ *  true - on success
+ *  false - on failure (timeout only)
+ */
+bool
+fiber_wait_dead(struct fiber *fiber, double timeout);
+
 typedef int (*fiber_stat_cb)(struct fiber *f, void *ctx);
 
 int
