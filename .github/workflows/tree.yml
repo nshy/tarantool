@@ -46,6 +46,9 @@ jobs:
       - name: Check entrypoint tag
         run: ./tools/check-entrypoint-tag.sh
 
+      - name: Check downgrade versions
+        run: ./tools/check-downgrade-versions.sh
+
       - name: Send VK Teams message on failure
         if: failure()
         uses: ./.github/actions/report-job-status
