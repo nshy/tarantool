@@ -25,7 +25,7 @@
 # - master
 # - release/*
 
-set -eo pipefail
+set -xeo pipefail
 
 error() {
    echo "$@" 1>&2
