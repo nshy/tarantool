@@ -43,6 +43,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fix "ubious ownership" issue
+        run: git config --global --add safe.directory /__w/tarantool/tarantool
+
       - name: Check entrypoint tag
         run: ./tools/check-entrypoint-tag.sh
 
