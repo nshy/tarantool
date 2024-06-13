@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   entrypoint-tag:
-    if: github.repository == 'tarantool/tarantool'
+    if: github.repository == 'nshy/tarantool'
 
     runs-on: ubuntu-20.04-self-hosted
 
