@@ -6110,6 +6110,12 @@ box_storage_shutdown()
 	gc_shutdown();
 	engine_shutdown();
 	fiber_pool_shutdown(&tx_fiber_pool);
+	if (luaT_dostring(tarantool_L,
+		          "require('fiber')."
+			  "_internal.worker_shutdown()") != 0) {
+		diag_log();
+		panic("cannot stop system worker fiber");
+	}
 }
 
 void

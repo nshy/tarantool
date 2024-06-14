@@ -98,25 +98,19 @@ local function worker_f()
             stall()
         end
         worker_next_task = task.next
-        task.f(task.arg)
+        pcall(task.f, task.arg)
+        if worker_next_task == nil then
+            worker_last_task = nil
+        end
         fiber.sleep(0)
     end
 end
 
-local worker_name = 'tasks_worker_fiber'
+local worker_name = 'system_worker_fiber'
 
-local function worker_safe_f()
-    pcall(worker_f)
-    -- Worker_f never returns. If the execution is here, this
-    -- fiber is probably canceled and now is not able to sleep.
-    -- Create a new one.
-    worker_fiber = fiber.new(worker_safe_f)
-    fiber_set_system(worker_fiber)
-    worker_fiber:name(worker_name)
-end
-
-worker_fiber = fiber.new(worker_safe_f)
-fiber_set_system(worker_fiber)
+worker_fiber = fiber.new(worker_f)
+fiber_set_system(worker_fiber, true)
+worker_fiber:set_joinable(true)
 worker_fiber:name(worker_name)
 
 local function worker_schedule_task(f, arg)
@@ -127,13 +121,41 @@ local function worker_schedule_task(f, arg)
         worker_last_task.next = task
     end
     worker_last_task = task
-    worker_fiber:wakeup()
+    -- Worker may be shutdown. See worker_fiber_shutdown().
+    if worker_fiber ~= nil then
+        worker_fiber:wakeup()
+    end
+end
+
+-- Shutdown worker fiber and execute all piled up tasks. After worker shutdown
+-- a task scheduled with schedule_task will be executed immediately in the
+-- caller fiber.
+local function worker_fiber_shutdown()
+    if worker_fiber == nil then
+        return
+    end
+    fiber_set_system(worker_fiber, false)
+    worker_fiber:cancel()
+    worker_fiber:join()
+    worker_fiber = nil
+    local task = worker_next_task
+    while task ~= nil do
+        pcall(task.f, task.arg)
+        -- Order is significant. New task can be scheduled during 
+        -- this task execution.
+        task = task.next
+    end
+    worker_next_task = nil
+    worker_last_task = nil
+    fiber._internal.is_shutdown = true
 end
 
 -- Start from '_' to hide it from auto completion.
 fiber._internal = fiber._internal or {}
 fiber._internal.schedule_task = worker_schedule_task
 fiber._internal.set_system = fiber_set_system
+fiber._internal.worker_shutdown = worker_fiber_shutdown
+fiber._internal.is_shutdown = false
 
 setmetatable(fiber, {__serialize = function(self)
     local res = table.copy(self)
