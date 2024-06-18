@@ -114,6 +114,7 @@ coio_fill_addrinfo(struct addrinfo *ai_local, const char *host,
 	}
 	if (rc != 1) {
 		diag_set(IllegalParams, "Invalid host name: %s", host);
+		free(ai_local->ai_addr);
 		return -1;
 	}
 	return 0;
@@ -166,12 +167,14 @@ coio_connect_timeout(const char *host, const char *service, int host_hint,
 		return fd;
 	}
 
-	struct addrinfo *ai = NULL;
+	struct addrinfo *ai;
+	struct addrinfo *ai_get = NULL;
 	struct addrinfo ai_local;
+	ai_local.ai_addr = NULL;
 	if (host != NULL && service != NULL && host_hint != 0) {
 		if (coio_fill_addrinfo(&ai_local, host, service,
 				       host_hint) != 0)
-			goto out;
+			return -1;
 		ai = &ai_local;
 	} else {
 		struct addrinfo hints;
@@ -182,6 +185,7 @@ coio_connect_timeout(const char *host, const char *service, int host_hint,
 		int rc = coio_getaddrinfo(host, service, &hints, &ai, delay);
 		if (rc != 0)
 			return -1;
+		ai_get = ai;
 	}
 	evio_timeout_update(loop(), &start, &delay);
 	coio_timeout_init(&start, &delay, timeout);
@@ -193,22 +197,16 @@ coio_connect_timeout(const char *host, const char *service, int host_hint,
 				*addr_len = MIN(ai->ai_addrlen, *addr_len);
 				memcpy(addr, ai->ai_addr, *addr_len);
 			}
-			goto out; /* connected */
+			break;
 		}
-		if (ai->ai_next == NULL)
-			goto out;
 		/* Ignore the error and try the next address. */
 		ai = ai->ai_next;
 		ev_now_update(loop);
 		coio_timeout_update(&start, &delay);
 	}
-	diag_set(SocketError, sio_socketname(fd), "connection failed");
-	return fd;
-out:
-	if (host_hint == 0)
-		freeaddrinfo(ai);
-	else
-		free(ai_local.ai_addr);
+	if (ai_get)
+		freeaddrinfo(ai_get);
+	free(ai_local.ai_addr);
 	return fd;
 }
 

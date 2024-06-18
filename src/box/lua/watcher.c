@@ -103,7 +103,8 @@ static void
 lbox_watcher_destroy_f(struct watcher *base)
 {
 	struct lbox_watcher *watcher = (struct lbox_watcher *)base;
-	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, watcher->func_ref);
+	if (tarantool_L != NULL)
+		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, watcher->func_ref);
 	free(watcher);
 }
 

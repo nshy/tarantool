@@ -711,6 +711,9 @@ space_new(struct space_def *space_def, struct rlist *key_list);
 struct space *
 space_new_ephemeral(struct space_def *space_def, struct rlist *key_list);
 
+void
+space_unpin(struct space *space);
+
 /** Destroy and free a space. */
 void
 space_delete(struct space *space);

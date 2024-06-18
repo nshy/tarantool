@@ -73,6 +73,9 @@ const char *txn_isolation_level_aliases[txn_isolation_level_MAX] = {
 /* Txn cache. */
 static STAILQ(txn_cache);
 
+/* List of all active transactions. */
+struct rlist txn_list = RLIST_HEAD_INITIALIZER(txn_list);
+
 static int
 txn_on_stop(struct trigger *trigger, void *event);
 
@@ -450,6 +453,7 @@ txn_new(void)
 	rlist_create(&txn->gap_list);
 	rlist_create(&txn->in_read_view_txs);
 	rlist_create(&txn->in_all_txs);
+	rlist_create(&txn->in_txn_list);
 	txn->space_on_replace_triggers_depth = 0;
 	txn->acquired_region_used = 0;
 	txn->limbo_entry = NULL;
@@ -473,6 +477,7 @@ txn_free(struct txn *txn)
 	/* Truncate region up to struct txn size. */
 	txn_reset_stats(txn);
 	region_truncate(&txn->region, sizeof(struct txn));
+	rlist_del(&txn->in_txn_list);
 	stailq_add(&txn_cache, &txn->in_txn_cache);
 }
 
@@ -535,6 +540,7 @@ txn_begin(void)
 	trigger_add(&fiber()->on_yield, &txn->fiber_on_yield);
 	trigger_create(&txn->fiber_on_stop, txn_on_stop, NULL, NULL);
 	trigger_add(&fiber()->on_stop, &txn->fiber_on_stop);
+	rlist_add_entry(&txn_list, txn, in_txn_list);
 	for (size_t i = 0; i < lengthof(txn->txn_events); i++)
 		txn_event_init(&txn->txn_events[i]);
 	/*
@@ -1681,4 +1687,14 @@ txn_stmt_mark_as_temporary(struct txn *txn, struct txn_stmt *stmt)
 	/* Revert row counter increases. */
 	txn_update_row_counts(txn, stmt, -1);
 	stmt->row = NULL;
+}
+
+void
+txn_destroy(void)
+{
+	struct txn *txn, *next_txn;
+	rlist_foreach_entry_safe(txn, &txn_list, in_txn_list, next_txn) {
+		txn->limbo_entry = NULL;
+		txn_free(txn);
+	}
 }

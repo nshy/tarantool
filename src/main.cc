@@ -558,6 +558,8 @@ tarantool_free(void)
 	coio_shutdown();
 
 	box_lua_free();
+	/* Lua may have reference to engine memory (tuples). */
+	tarantool_lua_free();
 	box_free();
 
 	title_free(main_argc, main_argv);
@@ -579,7 +581,6 @@ tarantool_free(void)
 	 * This doesn't work reliably since things
 	 * are too interconnected.
 	 */
-	tarantool_lua_free();
 	session_free();
 	user_cache_free();
 #endif
@@ -728,6 +729,8 @@ print_help(FILE *stream)
 		"or contribute a patch.\n";
 	fprintf(stream, help_msg, tarantool_version());
 }
+
+int tarantool_do_leak = 0;
 
 int
 main(int argc, char **argv)
@@ -1101,5 +1104,10 @@ main(int argc, char **argv)
 	free((void *)instance.name);
 	free((void *)instance.config);
 	tarantool_free();
+	if (tarantool_do_leak) {
+		void *p = malloc(10000);
+		(void)p;
+	}
+
 	return exit_code;
 }

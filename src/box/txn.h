@@ -525,6 +525,8 @@ struct txn {
 	 * Nesting level of space on_replace triggers for current txn.
 	 */
 	int space_on_replace_triggers_depth;
+	/** Link in txn_list. */
+	struct rlist in_txn_list;
 };
 
 static inline bool
@@ -986,6 +988,10 @@ txn_savepoint_by_name(struct txn *txn, const char *name);
 /** Remove given and all newer entries from savepoint list. */
 void
 txn_savepoint_release(struct txn_savepoint *svp);
+
+/* Free memory occupied by in-flight transactions. */
+void
+txn_destroy(void);
 
 /**
  * Method to get txn's region to pass it outside the transaction manager.

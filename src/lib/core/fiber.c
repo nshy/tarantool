@@ -2380,6 +2380,8 @@ fiber_set_system(struct fiber *f, bool yesno)
 int
 fiber_shutdown(double timeout)
 {
+	if (cord()->is_shutdown)
+		return 0;
 	assert(cord()->shutdown_fiber == NULL);
 	cord()->is_shutdown = true;
 	struct fiber *fiber;
