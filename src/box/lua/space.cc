@@ -765,13 +765,16 @@ box_lua_space_delete(struct lua_State *L, uint32_t id)
 static int
 box_lua_space_new_or_delete(struct trigger *trigger, void *event)
 {
-	struct lua_State *L = (struct lua_State *) trigger->data;
+	(void)trigger;
 	struct space *space = (struct space *) event;
+	/* On Tarantool shutdown Lua stack is already destroyed. */
+	if (tarantool_L == NULL)
+		return 0;
 
 	if (space_by_id(space->def->id) != NULL) {
-		box_lua_space_new(L, space);
+		box_lua_space_new(tarantool_L, space);
 	} else {
-		box_lua_space_delete(L, space->def->id);
+		box_lua_space_delete(tarantool_L, space->def->id);
 	}
 	return 0;
 }
@@ -910,7 +913,6 @@ void
 box_lua_space_init(struct lua_State *L)
 {
 	/* Register the trigger that will push space data to Lua. */
-	on_alter_space_in_lua.data = L;
 	trigger_add(&on_alter_space, &on_alter_space_in_lua);
 
 	lua_getfield(L, LUA_GLOBALSINDEX, "box");

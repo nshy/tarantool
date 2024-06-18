@@ -679,3 +679,5 @@ luaM_sysprof_stop
 luaopen_misc
 
 # }}} LuaJIT API
+
+tarantool_do_leak

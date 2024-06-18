@@ -114,6 +114,9 @@ sql_trigger_compile(const char *sql);
 void
 sql_trigger_delete(struct sql_trigger *trigger);
 
+void
+sql_trigger_delete_all(struct sql_trigger *trigger);
+
 /**
  * Get server triggers list by space_id.
  * @param space_id valid Space ID.

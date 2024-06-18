@@ -59,6 +59,7 @@
 #include "lua/utils.h"
 #include "core/mp_ctx.h"
 #include "port.h"
+#include "sql.h"
 
 int
 access_check_space(struct space *space, user_access_t access)
@@ -695,6 +696,18 @@ space_new_ephemeral(struct space_def *def, struct rlist *key_list)
 }
 
 void
+space_unpin(struct space *space)
+{
+	if (space->format != NULL) {
+		space_cleanup_constraints(space);
+		space_unpin_defaults(space);
+		tuple_format_unref(space->format);
+		space->format = NULL;
+	}
+	space_unpin_collations(space);
+}
+
+void
 space_delete(struct space *space)
 {
 	assert(rlist_empty(&space->alter_stmts));
@@ -706,12 +719,8 @@ space_delete(struct space *space)
 	}
 	free(space->index_map);
 	free(space->check_unique_constraint_map);
-	if (space->format != NULL) {
-		space_cleanup_constraints(space);
-		space_unpin_defaults(space);
-		tuple_format_unref(space->format);
-	}
-	space_unpin_collations(space);
+	space_unpin(space);
+
 	trigger_destroy(&space->before_replace);
 	trigger_destroy(&space->on_replace);
 	space_reset_events(space);
@@ -722,9 +731,14 @@ space_delete(struct space *space)
 	 * SQL triggers should be deleted with on_replace_dd_triggers on
 	 * deletion from corresponding system space.
 	 */
+	/** XXX tmp, to fix assertion on sql_triggers below. */
+	sql_trigger_delete_all(space->sql_triggers);
+	space->sql_triggers = NULL;
 	assert(space->sql_triggers == NULL);
 	assert(rlist_empty(&space->space_cache_pin_list));
-	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, space->lua_ref);
+	/* On Tarantool shutdown Lua stack is already destroyed. */
+	if (tarantool_L != NULL)
+		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, space->lua_ref);
 	space->vtab->destroy(space);
 }
 

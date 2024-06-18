@@ -597,13 +597,12 @@ box.snapshot()
 test_run:cmd('switch default')
 test_run:cmd("stop server rtree")
 test_run:cmd("start server rtree with crash_expected=True")
-fio = require('fio')
-fh = fio.open(fio.pathjoin(fio.cwd(), 'cfg_rtree.log'), {'O_RDONLY'})
-size = fh:seek(0, 'SEEK_END')
-fh:seek(-256, 'SEEK_END') ~= nil
-line = fh:read(256)
-fh:close()
-string.match(line, 'Failed to allocate') ~= nil
+-- FIXME:
+-- We removed checking for OOM notice in log because it does not work
+-- due to a lot of leak reports at the end of the log file. We cannot
+-- avoid leak reports here. The issue is we panic and do not close
+-- Lua state which result in FP leak reports (for some reason LSAN
+-- does not see references for Lua objects.)
 
 --
 -- gh-5958: make sure that if there is no memory to make
