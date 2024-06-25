@@ -4,4 +4,5 @@
 # File format:
 #leak:*
 
+leak:sql_prepare_and_execute
 leak:sqlParser
