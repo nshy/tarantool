@@ -214,6 +214,7 @@ struct memtx_tree_index {
 	size_t build_array_size, build_array_alloc_size;
 	struct memtx_gc_task gc_task;
 	memtx_tree_iterator_t<USE_HINT> gc_iterator;
+	bool gc_is_func;
 };
 
 /* {{{ Utilities. *************************************************/
@@ -910,12 +911,16 @@ memtx_tree_index_gc_run(struct memtx_gc_task *task, bool *done)
 	memtx_tree_t<USE_HINT> *tree = &index->tree;
 	memtx_tree_iterator_t<USE_HINT> *itr = &index->gc_iterator;
 
+	const bool is_func = index->gc_is_func;
 	unsigned int loops = 0;
 	while (!memtx_tree_iterator_is_invalid(itr)) {
 		struct memtx_tree_data<USE_HINT> *res =
 			memtx_tree_iterator_get_elem(tree, itr);
 		memtx_tree_iterator_next(tree, itr);
-		tuple_unref(res->tuple);
+		if (is_func)
+			tuple_unref((struct tuple *)res->hint);
+		else
+			tuple_unref(res->tuple);
 		ERROR_INJECT_DOUBLE(ERRINJ_MEMTX_GC_TIMEOUT, inj->dparam > 0,
 				    thread_sleep(inj->dparam));
 		if (++loops >= YIELD_LOOPS) {
@@ -953,14 +958,20 @@ memtx_tree_index_destroy(struct index *base)
 	struct memtx_tree_index<USE_HINT> *index =
 		(struct memtx_tree_index<USE_HINT> *)base;
 	struct memtx_engine *memtx = (struct memtx_engine *)base->engine;
-	if (base->def->iid == 0) {
+	if (base->def->iid == 0 ||
+	    base->def->key_def->func_index_func != NULL) {
 		/*
 		 * Primary index. We need to free all tuples stored
 		 * in the index, which may take a while. Schedule a
 		 * background task in order not to block tx thread.
+		 *
+		 * Functioanl index. For every tuple we need to
+		 * free all functional keys associated with this tuple.
+		 * Let's do it in background also.
 		 */
 		index->gc_task.vtab = get_memtx_tree_index_gc_vtab<USE_HINT>();
 		index->gc_iterator = memtx_tree_first(&index->tree);
+		index->gc_is_func = base->def->key_def->func_index_func != NULL;
 		memtx_engine_schedule_gc(memtx, &index->gc_task);
 	} else {
 		/*
