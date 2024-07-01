@@ -6,3 +6,7 @@
 
 leak:sql_prepare_and_execute
 leak:sqlParser
+
+# FIXME suppress until gh-10184 is fixed
+leak:lua_yaml_encode
+leak:l_load
