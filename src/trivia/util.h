@@ -844,9 +844,15 @@ illegal_instruction(void)
 }
 #endif
 
+extern bool lsan_enabled;
+
 #ifdef ENABLE_ASAN
 # include <sanitizer/lsan_interface.h>
 # define LSAN_IGNORE_OBJECT(ptr) __lsan_ignore_object(ptr)
+
+int
+__lsan_is_turned_off(void);
+
 #else
 # define LSAN_IGNORE_OBJECT(ptr) ((void)ptr)
 #endif
