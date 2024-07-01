@@ -468,3 +468,11 @@ strtoupperdup(const char *s)
 	uppercase[len] = '\0';
 	return uppercase;
 }
+
+bool lsan_enabled = true;
+
+int __attribute__((used))
+__lsan_is_turned_off(void)
+{
+	return lsan_enabled ? 0 : 1;
+}
