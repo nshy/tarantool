@@ -1227,8 +1227,12 @@ after_old_tuple_lookup:;
 			assert(constr->def.type == CONSTR_FKEY);
 			if (tuple_constraint_fkey_check_delete(constr,
 							       old_tuple,
-							       new_tuple) != 0)
+							       new_tuple) != 0) {
+
+				if (new_tuple != NULL)
+					tuple_unref(new_tuple);
 				return -1;
+			}
 		}
 	}
 
