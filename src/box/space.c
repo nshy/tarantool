@@ -719,6 +719,7 @@ space_delete(struct space *space)
 	}
 	free(space->index_map);
 	free(space->check_unique_constraint_map);
+	free(space->sequence_path);
 	space_unpin(space);
 
 	trigger_destroy(&space->before_replace);

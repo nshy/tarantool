@@ -1021,7 +1021,9 @@ alter_space_do(struct txn_stmt *stmt, struct alter_space *alter)
 
 	alter->new_space->sequence = alter->old_space->sequence;
 	alter->new_space->sequence_fieldno = alter->old_space->sequence_fieldno;
-	alter->new_space->sequence_path = alter->old_space->sequence_path;
+	if (alter->old_space->sequence_path != NULL)
+		alter->new_space->sequence_path =
+			(char *)xstrdup(alter->old_space->sequence_path);
 	memcpy(alter->new_space->access, alter->old_space->access,
 	       sizeof(alter->old_space->access));
 
