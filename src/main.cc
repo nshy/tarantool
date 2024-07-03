@@ -732,6 +732,9 @@ print_help(FILE *stream)
 
 int tarantool_do_leak = 0;
 
+/* Instance configuration data. */
+static instance_state instance;
+
 int
 main(int argc, char **argv)
 {
@@ -747,8 +750,6 @@ main(int argc, char **argv)
 	/* Lua interpeter options, e.g. -e and -l */
 	int optc = 0;
 	const char **optv = NULL;
-	/* Instance configuration data. */
-	static instance_state instance;
 	/* The maximum possible number of Lua interpeter options */
 	int optc_max = (argc - 1) * 2;
 	bool say_entering_the_event_loop = true;
@@ -791,6 +792,7 @@ main(int argc, char **argv)
 			 * XXX: The given argument is copied to be
 			 * consistent with <getenv_safe> results.
 			 */
+			free((void *)instance.name);
 			instance.name = (const char *)xstrdup(optarg);
 			break;
 		case 'c':
@@ -798,6 +800,7 @@ main(int argc, char **argv)
 			 * XXX: The given argument is copied to be
 			 * consistent with <getenv_safe> results.
 			 */
+			free((void *)instance.config);
 			instance.config = (const char *)xstrdup(optarg);
 			break;
 		case 'V':
@@ -1100,9 +1103,6 @@ main(int argc, char **argv)
 		tarantool_exit(exit_code);
 	if (!shutdown_finished)
 		ev_run(loop(), 0);
-	/* freeing resources */
-	free((void *)instance.name);
-	free((void *)instance.config);
 	tarantool_free();
 	if (tarantool_do_leak) {
 		void *p = malloc(10000);
