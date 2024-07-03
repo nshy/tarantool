@@ -145,7 +145,7 @@ g.test_shutdown_of_hanging_iproto_request = function(cg)
     end)
     local log = fio.pathjoin(cg.server.workdir, cg.server.alias .. '.log')
     test_no_hang_on_shutdown(cg.server)
-    t.assert(cg.server:grep_log('cannot gracefully shutdown iproto', nil,
+    t.assert(cg.server:grep_log('cannot gracefully shutdown client fibers', nil,
              {filename = log}))
 end
 

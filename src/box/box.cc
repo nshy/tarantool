@@ -6088,18 +6088,6 @@ box_storage_shutdown()
 		diag_log();
 		panic("cannot gracefully shutdown iproto");
 	}
-	box_watcher_shutdown();
-	/*
-	 * Finish client fibers after iproto_shutdown otherwise new fibers
-	 * can be started through new iproto requests. Also we should
-	 * finish client fibers before other subsystems shutdown so that
-	 * we won't need to handle requests from client fibers after/during
-	 * subsystem shutdown.
-	 */
-	if (fiber_shutdown(box_shutdown_timeout) != 0) {
-		diag_log();
-		panic("cannot gracefully shutdown client fibers");
-	}
 	replication_shutdown();
 	gc_shutdown();
 	engine_shutdown();
@@ -6108,6 +6096,23 @@ box_storage_shutdown()
 void
 box_shutdown(void)
 {
+	/*
+	 * Watcher should be shutdown before subsystems shutdown because
+	 * it may execute client code. It can be shutdown before or
+	 * after client fiber shutdown. Both cases are correct. But
+	 * if we do it after we may have noisy log fiber creation failure
+	 * for async watcher execution.
+	 */
+	box_watcher_shutdown();
+	/*
+	 * Finish client fibers before other subsystems shutdown so that
+	 * we won't get unexpected request to shutdown subsystems from
+	 * client code.
+	 */
+	if (fiber_shutdown(box_shutdown_timeout) != 0) {
+		diag_log();
+		panic("cannot gracefully shutdown client fibers");
+	}
 	box_storage_shutdown();
 }
 
