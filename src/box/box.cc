@@ -6028,7 +6028,7 @@ box_storage_free(void)
 	flightrec_free();
 	audit_log_free();
 	sql_built_in_functions_cache_free();
-	/* fiber_pool_destroy(&tx_fiber_pool); */
+	fiber_pool_destroy(&tx_fiber_pool);
 	is_storage_initialized = false;
 }
 
@@ -6091,6 +6091,7 @@ box_storage_shutdown()
 	replication_shutdown();
 	gc_shutdown();
 	engine_shutdown();
+	fiber_pool_shutdown(&tx_fiber_pool);
 }
 
 void
