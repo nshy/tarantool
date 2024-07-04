@@ -920,12 +920,14 @@ lbox_fiber_stall(struct lua_State *L)
 static int
 lbox_fiber_set_system(struct lua_State *L)
 {
-	if (lua_gettop(L) != 1) {
-		diag_set(IllegalParams, "fiber.set_system(id): bad arguments");
+	if (lua_gettop(L) != 2) {
+		diag_set(IllegalParams,
+			 "fiber.set_system(id, yesno): bad arguments");
 		luaT_error(L);
 	}
 	struct fiber *fiber = lbox_checkfiber(L, 1);
-	fiber_set_system(fiber, true);
+	bool yesno = lua_toboolean(L, 2);
+	fiber_set_system(fiber, yesno);
 	return 0;
 }
 

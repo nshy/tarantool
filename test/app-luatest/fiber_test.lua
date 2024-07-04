@@ -96,3 +96,21 @@ g.test_gh_10196_no_hang_on_self_join = function()
         message = 'cannot join itself',
     })
 end
+
+g.test_fiber_set_system = function()
+    local f = fiber.create(function()
+        while true do
+            fiber.yield()
+        end
+    end)
+    fiber._internal.set_system(f, true)
+    -- This one should be ignored.
+    f:cancel()
+    fiber.yield()
+    t.assert_not_equals(f:status(), 'dead')
+    fiber._internal.set_system(f, false)
+    -- This one should work.
+    f:cancel()
+    fiber.yield()
+    t.assert_equals(f:status(), 'dead')
+end

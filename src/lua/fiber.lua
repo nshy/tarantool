@@ -111,7 +111,7 @@ local function worker_safe_f()
     -- fiber is probably canceled and now is not able to sleep.
     -- Create a new one.
     worker_fiber = fiber.new(worker_safe_f)
-    fiber_set_system(worker_fiber)
+    fiber_set_system(worker_fiber, true)
     worker_fiber:name(worker_name)
 end
 
