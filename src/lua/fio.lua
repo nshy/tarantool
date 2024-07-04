@@ -14,6 +14,7 @@ ffi.cdef[[
     int umask(int mask);
     char *dirname(char *path);
     int chdir(const char *path);
+    int close(int fildes);
 
     struct fio_handle {
         int fh;
@@ -177,13 +178,24 @@ fio_methods.__serialize = function(self)
     return {fh = self.fh}
 end
 
+-- Close handle depending on whether event loop is running or not
+-- (at some moment on shutdown). In the latter case do not use
+-- coio.
+local function close_handle(fh)
+    if fiber._internal.is_shutdown then
+        ffi.C.close(fh)
+    else
+        internal.close(fh)
+    end
+end
+
 local fio_mt = {
     __index = fio_methods,
     __gc = function(obj)
         if obj.fh >= 0 then
             -- FFI GC can't yield. Internal.close() yields.
             -- Collect the garbage later, in a worker fiber.
-            schedule_task(internal.close, obj.fh)
+            schedule_task(close_handle, obj.fh)
         end
     end,
 }

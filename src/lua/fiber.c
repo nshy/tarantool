@@ -50,6 +50,13 @@ luaL_testcancel(struct lua_State *L)
 	}
 }
 
+void
+fiber_worker_shutdown(void)
+{
+	const char *c = "require('fiber')._internal.worker_shutdown()";
+	VERIFY(luaT_dostring(tarantool_L, c) == 0);
+}
+
 /* {{{ fiber Lua library: access to Tarantool fibers
  *
  * Each fiber can be running, suspended or dead.
@@ -913,6 +920,7 @@ lbox_fiber_stall(struct lua_State *L)
 {
 	(void) L;
 	fiber_yield();
+	luaL_testcancel(L);
 	return 0;
 }
 

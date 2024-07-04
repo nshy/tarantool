@@ -1,6 +1,19 @@
 local fiber = require('fiber')
 local t = require('luatest')
+local server = require('luatest.server')
+
 local g = t.group('fiber')
+
+g.before_all(function(cg)
+    cg.server = server:new()
+    cg.server:start()
+end)
+
+g.after_all(function(cg)
+    if cg.server ~= nil then
+        cg.server:drop()
+    end
+end)
 
 -- Test __serialize metamethod of the fiber.
 g.test_serialize = function()
@@ -113,4 +126,47 @@ g.test_fiber_set_system = function()
     f:cancel()
     fiber.yield()
     t.assert_equals(f:status(), 'dead')
+end
+
+g.test_fiber_stall_is_cancellable = function()
+    local f = fiber.create(function()
+        while true do
+            fiber._internal.stall()
+        end
+    end)
+    t.assert_not_equals(f:status(), 'dead')
+    f:cancel()
+    fiber.yield()
+    t.assert_equals(f:status(), 'dead')
+end
+
+g.test_worker_fiber_shutdown = function(cg)
+    cg.server:exec(function()
+        local fiber = require('fiber')
+
+        t.assert_equals(fiber._internal.is_shutdown, false)
+        local executed = {}
+        local ch = fiber.channel()
+        fiber._internal.schedule_task(function()
+            t:assert(ch:get(30))
+            table.insert(executed, 1)
+        end)
+        fiber._internal.schedule_task(function()
+            table.insert(executed, 2)
+        end)
+        fiber._internal.schedule_task(function()
+            fiber._internal.schedule_task(function()
+                table.insert(executed, 4)
+            end)
+            table.insert(executed, 3)
+        end)
+        fiber.yield()
+        t.assert(ch:put(true, 30))
+        fiber._internal.worker_shutdown()
+        -- Make sure all tasks are executed. Tasks scheduled before shutdown
+        -- are executed in order. Tasks scheduled during shutdown are executed
+        -- out of order.
+        t.assert_equals(executed, {1, 2, 4, 3})
+        t.assert_equals(fiber._internal.is_shutdown, true)
+    end)
 end

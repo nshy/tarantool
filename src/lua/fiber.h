@@ -45,6 +45,10 @@ tarantool_lua_fiber_init(struct lua_State *L);
 void
 luaL_testcancel(struct lua_State *L);
 
+/** Shutdown tasks_worker_fiber of Lua land. */
+void
+fiber_worker_shutdown(void);
+
 #if defined(__cplusplus)
 } /* extern "C" */
 #endif /* defined(__cplusplus) */

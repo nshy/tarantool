@@ -100,6 +100,7 @@
 #include "tt_sort.h"
 #include "event.h"
 #include "tweaks.h"
+#include "lua/fiber.h"
 
 static char status[64] = "unconfigured";
 
@@ -6093,6 +6094,7 @@ box_storage_shutdown()
 	gc_shutdown();
 	engine_shutdown();
 	fiber_pool_shutdown(&tx_fiber_pool);
+	fiber_worker_shutdown();
 }
 
 void
