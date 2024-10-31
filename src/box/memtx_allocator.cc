@@ -136,7 +136,7 @@ memtx_tuple_rv_delete(struct memtx_tuple_rv *rv, struct rlist *list,
 }
 
 void
-memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple *tuple,
+memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple_gc *tuple_gc,
 		   size_t mem_used)
 {
 	/*
@@ -149,7 +149,7 @@ memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple *tuple,
 	while (begin != end) {
 		int middle = begin + (end - begin) / 2;
 		struct memtx_tuple_rv_list *l = &rv->lists[middle];
-		if (l->version <= tuple->version) {
+		if (l->version <= tuple_gc->tuple->version) {
 			begin = middle + 1;
 		} else {
 			found = l;
@@ -157,7 +157,7 @@ memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple *tuple,
 		}
 	}
 	assert(found != nullptr);
-	stailq_add_entry(&found->tuples, tuple, in_gc);
+	stailq_add_entry(&found->tuples, tuple_gc, in_gc);
 	found->mem_used += mem_used;
 }
 
@@ -167,7 +167,8 @@ memtx_allocators_init(struct allocator_settings *settings)
 	foreach_allocator<allocator_create,
 		struct allocator_settings *&>(settings);
 
-	foreach_memtx_allocator<allocator_create>();
+	foreach_memtx_allocator<allocator_create,
+		struct allocator_settings *&>(settings);
 }
 
 void

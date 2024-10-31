@@ -51,7 +51,6 @@ stats_noop_cb(const void *stats, void *cb_ctx);
 
 struct allocator_settings {
 	struct small_allocator {
-		struct slab_cache *cache;
 		uint32_t objsize_min;
 		unsigned granularity;
 		float alloc_factor;
@@ -60,6 +59,7 @@ struct allocator_settings {
 	struct system_allocator {
 		struct quota *quota;
 	} sys;
+	struct slab_cache *cache;
 };
 
 static inline void
@@ -68,13 +68,15 @@ allocator_settings_init(allocator_settings *settings, struct slab_cache *cache,
 			float alloc_factor, float *actual_alloc_factor,
 			struct quota *quota)
 {
-	settings->small.cache = cache;
+	settings->cache = cache;
+
 	settings->small.objsize_min = objsize_min;
 	settings->small.granularity = granularity;
 	settings->small.alloc_factor = alloc_factor;
 	settings->small.actual_alloc_factor = actual_alloc_factor;
 
 	settings->sys.quota = quota;
+
 }
 
 /**
@@ -93,7 +95,7 @@ public:
 	create(struct allocator_settings *settings)
 	{
 		small_alloc_create(&small_alloc,
-				   settings->small.cache,
+				   settings->cache,
 				   settings->small.objsize_min,
 				   settings->small.granularity,
 				   settings->small.alloc_factor,

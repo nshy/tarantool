@@ -41,25 +41,23 @@
  * Memtx tuple sub-class.
  */
 struct PACKED memtx_tuple {
-	/*
-	 * Sic: The header of the tuple is used to store a link in
-	 * a tuple garbage collection list. Please don't change it
-	 * without understanding how tuple garbage collection and
-	 * copy-on-write mechanisms work.
+	/**
+	 * Most recent read view's version at the time
+	 * when the tuple was allocated.
 	 */
-	union {
-		struct {
-			/**
-			 * Most recent read view's version at the time
-			 * when the tuple was allocated.
-			 */
-			uint32_t version;
-			/** Base tuple class. */
-			struct tuple base;
-		};
-		/** Link in garbage collection list. */
-		struct stailq_entry in_gc;
-	};
+	uint32_t version;
+	/** Base tuple class. */
+	struct tuple base;
+};
+
+/**
+ * Tuple that resides only in read views.
+ */
+struct memtx_tuple_gc {
+	/** Tuple in gc. */
+	struct memtx_tuple *tuple;
+	/** Link in garbage collection list. */
+	struct stailq_entry in_gc;
 };
 
 /**
@@ -72,7 +70,7 @@ struct memtx_tuple_rv_list {
 	uint32_t version;
 	/** Total size of memory allocated for tuples stored in this list. */
 	size_t mem_used;
-	/** List of tuples, linked by memtx_tuple::in_gc. */
+	/** List of tuples, linked by memtx_tuple_gc::in_gc. */
 	struct stailq tuples;
 };
 
@@ -173,7 +171,7 @@ memtx_tuple_rv_delete(struct memtx_tuple_rv *rv, struct rlist *list,
  * must be < than the most recent open read view.
  */
 void
-memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple *tuple,
+memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple_gc *tuple_gc,
 		   size_t mem_used);
 
 /** MemtxAllocator statistics. */
@@ -221,18 +219,21 @@ public:
 	/** Memory usage statistics. */
 	static struct memtx_allocator_stats stats;
 
-	static void create()
+	static void create(struct allocator_settings *settings)
 	{
 		memtx_allocator_stats_create(&stats);
 		stailq_create(&gc);
 		for (int type = 0; type < memtx_tuple_rv_type_MAX; type++)
 			rlist_create(&read_views[type]);
+		mempool_create(&gc_tuples, settings->cache,
+			       sizeof(struct memtx_tuple_gc));
 	}
 
 	static void destroy()
 	{
 		while (collect_garbage()) {
 		}
+		mempool_destroy(&gc_tuples);
 	}
 
 	/**
@@ -327,7 +328,11 @@ public:
 			free(memtx_tuple, size);
 		} else {
 			stats.used_rv += size;
-			memtx_tuple_rv_add(rv, memtx_tuple, size);
+			struct memtx_tuple_gc *tuple_gc =
+					(struct memtx_tuple_gc *)
+					xmempool_alloc(&gc_tuples);
+			tuple_gc->tuple = memtx_tuple;
+			memtx_tuple_rv_add(rv, tuple_gc, size);
 		}
 	}
 
@@ -338,13 +343,14 @@ public:
 	static bool collect_garbage()
 	{
 		for (int i = 0; !stailq_empty(&gc) && i < GC_BATCH_SIZE; i++) {
-			struct memtx_tuple *memtx_tuple = stailq_shift_entry(
-					&gc, struct memtx_tuple, in_gc);
-			size_t size = tuple_size(&memtx_tuple->base) +
+			struct memtx_tuple_gc *tuple_gc = stailq_shift_entry(
+					&gc, struct memtx_tuple_gc, in_gc);
+			size_t size = tuple_size(&tuple_gc->tuple->base) +
 				      offsetof(struct memtx_tuple, base);
 			assert(stats.used_gc >= size);
 			stats.used_gc -= size;
-			free(memtx_tuple, size);
+			free(tuple_gc->tuple, size);
+			mempool_free(&gc_tuples, tuple_gc);
 		}
 		return !stailq_empty(&gc);
 	}
@@ -385,10 +391,11 @@ private:
 
 	/**
 	 * List of freed tuples that were not freed immediately, because
-	 * they were in use by a read view, linked in by memtx_tuple::in_gc.
+	 * they were in use by a read view, linked in by memtx_tuple_gc::in_gc.
 	 * We collect tuples from this list on allocation.
 	 */
 	static struct stailq gc;
+	static struct mempool gc_tuples;
 	/**
 	 * Most recent read view's version.
 	 *
@@ -436,6 +443,9 @@ private:
 
 template<class Allocator>
 struct stailq MemtxAllocator<Allocator>::gc;
+
+template<class Allocator>
+struct mempool MemtxAllocator<Allocator>::gc_tuples;
 
 template<class Allocator>
 uint32_t MemtxAllocator<Allocator>::read_view_version;
