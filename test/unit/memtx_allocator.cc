@@ -503,7 +503,8 @@ test_mem_used()
 	is(stats.used_gc, 0, "used_gc init");
 
 	size_t tuple_size = sizeof(struct tuple) +
-			    offsetof(struct memtx_tuple, base);
+		    offsetof(struct memtx_tuple<SmallAlloc::pointer_size>,
+			     base);
 	struct tuple *tuple = alloc_tuple();
 
 	struct tuple *tuple1 = alloc_tuple();

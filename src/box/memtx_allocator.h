@@ -37,9 +37,18 @@
 #include "small/rlist.h"
 #include "tuple.h"
 
+template<int tuple_pointer_size>
+struct memtx_tuple_gc_link;
+
+template<>
+struct memtx_tuple_gc_link<64> {
+	struct stailq_entry link;
+};
+
 /**
  * Memtx tuple sub-class.
  */
+template<int tuple_pointer_size>
 struct PACKED memtx_tuple {
 	/*
 	 * Sic: The header of the tuple is used to store a link in
@@ -58,8 +67,47 @@ struct PACKED memtx_tuple {
 			struct tuple base;
 		};
 		/** Link in garbage collection list. */
-		struct stailq_entry in_gc;
+		struct memtx_tuple_gc_link<tuple_pointer_size> in_gc;
 	};
+};
+
+template<class memtx_tuple>
+struct memtx_tuple_list;
+
+template<>
+struct memtx_tuple_list<struct memtx_tuple<64>> {
+	struct stailq tuples;
+
+	static inline void
+	create(struct memtx_tuple_list *list)
+	{
+		stailq_create(&list->tuples);
+	}
+
+	inline bool
+	is_empty()
+	{
+		return stailq_empty(&tuples);
+	}
+
+	inline void
+	add_entry(struct memtx_tuple<64> *tuple) {
+		stailq_add(&tuples, &tuple->in_gc.link);
+	}
+
+	inline struct memtx_tuple<64> *
+	shift_entry() {
+		struct stailq_entry *e = stailq_shift(&tuples);
+		auto link = stailq_entry(e, struct memtx_tuple_gc_link<64>,
+					 link);
+		return stailq_entry(link, struct memtx_tuple<64>, in_gc);
+	}
+
+	inline void
+	concat(struct memtx_tuple_list *list)
+	{
+		stailq_concat(&tuples, &list->tuples);
+	}
 };
 
 /**
@@ -67,13 +115,14 @@ struct PACKED memtx_tuple {
  *
  * See the comment to memtx_tuple_rv for details.
  */
+template<class memtx_tuple>
 struct memtx_tuple_rv_list {
 	/** Read view version. */
 	uint32_t version;
 	/** Total size of memory allocated for tuples stored in this list. */
 	size_t mem_used;
 	/** List of tuples, linked by memtx_tuple::in_gc. */
-	struct stailq tuples;
+	struct memtx_tuple_list<memtx_tuple> tuples;
 };
 
 /**
@@ -108,6 +157,7 @@ struct memtx_tuple_rv_list {
  *    + We move tuples from all other lists to the corresponding list of
  *      the found read view.
  */
+template<class memtx_tuple>
 struct memtx_tuple_rv {
 	/** Link in the list of all open read views. */
 	struct rlist link;
@@ -121,12 +171,13 @@ struct memtx_tuple_rv {
 	 * Ordered by read view version, ascending (the oldest read view comes
 	 * first).
 	 */
-	struct memtx_tuple_rv_list lists[0];
+	struct memtx_tuple_rv_list<memtx_tuple> lists[0];
 };
 
 /** Returns the read view version. */
+template<class memtx_tuple>
 static inline uint32_t
-memtx_tuple_rv_version(struct memtx_tuple_rv *rv)
+memtx_tuple_rv_version(struct memtx_tuple_rv<memtx_tuple> *rv)
 {
 	/* Last list corresponds to self. */
 	assert(rv->count > 0);
@@ -146,6 +197,7 @@ enum memtx_tuple_rv_type {
 	memtx_tuple_rv_type_MAX,
 };
 
+
 /**
  * Allocates a list array for a read view and initializes it using the list of
  * all open read views. Adds the new read view to the list.
@@ -153,7 +205,8 @@ enum memtx_tuple_rv_type {
  * If the version of the most recent read view matches the new version,
  * the function will reuse it instead of creating a new one.
  */
-struct memtx_tuple_rv *
+template<class memtx_tuple>
+struct memtx_tuple_rv<memtx_tuple> *
 memtx_tuple_rv_new(uint32_t version, struct rlist *list);
 
 /**
@@ -162,9 +215,12 @@ memtx_tuple_rv_new(uint32_t version, struct rlist *list);
  * any read view are appended to the tuples_to_free list. Size of memory that
  * can be freed is stored in mem_freed.
  */
+template<class memtx_tuple>
 void
-memtx_tuple_rv_delete(struct memtx_tuple_rv *rv, struct rlist *list,
-		      struct stailq *tuples_to_free, size_t *mem_freed);
+memtx_tuple_rv_delete(struct memtx_tuple_rv<memtx_tuple> *rv,
+		      struct rlist *list,
+		      struct memtx_tuple_list<memtx_tuple> *tuples_to_free,
+		      size_t *mem_freed);
 
 /**
  * Adds a freed tuple to a read view's list and returns true.
@@ -172,9 +228,10 @@ memtx_tuple_rv_delete(struct memtx_tuple_rv *rv, struct rlist *list,
  * The tuple must be visible from some read view, that is the tuple version
  * must be < than the most recent open read view.
  */
+template<class memtx_tuple>
 void
-memtx_tuple_rv_add(struct memtx_tuple_rv *rv, struct memtx_tuple *tuple,
-		   size_t mem_used);
+memtx_tuple_rv_add(struct memtx_tuple_rv<memtx_tuple> *rv,
+		   memtx_tuple *tuple, size_t mem_used);
 
 /** MemtxAllocator statistics. */
 struct memtx_allocator_stats {
@@ -207,6 +264,7 @@ memtx_allocator_stats_add(struct memtx_allocator_stats *dst,
 template<class Allocator>
 class MemtxAllocator {
 public:
+	static const int bits = Allocator::pointer_size;
 	/**
 	 * Tuple read view.
 	 *
@@ -215,7 +273,8 @@ public:
 	 */
 	struct ReadView {
 		/** Lists of tuples owned by this read view. */
-		struct memtx_tuple_rv *rv[memtx_tuple_rv_type_MAX];
+		struct memtx_tuple_rv<struct memtx_tuple<bits>>
+						*rv[memtx_tuple_rv_type_MAX];
 	};
 
 	/** Memory usage statistics. */
@@ -224,7 +283,7 @@ public:
 	static void create()
 	{
 		memtx_allocator_stats_create(&stats);
-		stailq_create(&gc);
+		memtx_tuple_list<struct memtx_tuple<bits>>::create(&gc);
 		for (int type = 0; type < memtx_tuple_rv_type_MAX; type++)
 			rlist_create(&read_views[type]);
 	}
@@ -260,8 +319,8 @@ public:
 			if (!opts->enable_data_temporary_spaces &&
 			    type == memtx_tuple_rv_temporary)
 				continue;
-			rv->rv[type] = memtx_tuple_rv_new(read_view_version,
-							  &read_views[type]);
+			rv->rv[type] = memtx_tuple_rv_new<memtx_tuple<bits>>(
+					read_view_version, &read_views[type]);
 		}
 		return rv;
 	}
@@ -290,9 +349,9 @@ public:
 	 */
 	static struct tuple *alloc_tuple(size_t size)
 	{
-		size_t total = size + offsetof(struct memtx_tuple, base);
-		struct memtx_tuple *memtx_tuple =
-			(struct memtx_tuple *)alloc(total);
+		size_t total = size + offsetof(struct memtx_tuple<bits>, base);
+		struct memtx_tuple<bits> *memtx_tuple =
+			(struct memtx_tuple<bits> *)alloc(total);
 		if (memtx_tuple == NULL)
 			return NULL;
 		/* Use low-resolution clock, because it's hot path. */
@@ -318,10 +377,11 @@ public:
 	static void free_tuple(struct tuple *tuple)
 	{
 		size_t size = tuple_size(tuple) +
-			      offsetof(struct memtx_tuple, base);
-		struct memtx_tuple *memtx_tuple = container_of(
-			tuple, struct memtx_tuple, base);
-		struct memtx_tuple_rv *rv = tuple_rv_last(tuple);
+			      offsetof(struct memtx_tuple<bits>, base);
+		struct memtx_tuple<bits> *memtx_tuple = container_of(
+			tuple, struct memtx_tuple<bits>, base);
+		struct memtx_tuple_rv<struct memtx_tuple<bits>> *rv =
+							tuple_rv_last(tuple);
 		if (rv == nullptr ||
 		    memtx_tuple->version >= memtx_tuple_rv_version(rv)) {
 			free(memtx_tuple, size);
@@ -337,16 +397,16 @@ public:
 	 */
 	static bool collect_garbage()
 	{
-		for (int i = 0; !stailq_empty(&gc) && i < GC_BATCH_SIZE; i++) {
-			struct memtx_tuple *memtx_tuple = stailq_shift_entry(
-					&gc, struct memtx_tuple, in_gc);
+		for (int i = 0; !gc.is_empty() && i < GC_BATCH_SIZE; i++) {
+			struct memtx_tuple<bits> *memtx_tuple =
+							gc.shift_entry();
 			size_t size = tuple_size(&memtx_tuple->base) +
-				      offsetof(struct memtx_tuple, base);
+				      offsetof(struct memtx_tuple<bits>, base);
 			assert(stats.used_gc >= size);
 			stats.used_gc -= size;
 			free(memtx_tuple, size);
 		}
-		return !stailq_empty(&gc);
+		return !gc.is_empty();
 	}
 
 private:
@@ -372,7 +432,7 @@ private:
 	 * Returns the most recent open read view that needs this tuple or null
 	 * if the tuple may be freed immediately.
 	 */
-	static struct memtx_tuple_rv *
+	static struct memtx_tuple_rv<struct memtx_tuple<bits>> *
 	tuple_rv_last(struct tuple *tuple)
 	{
 		struct rlist *list = tuple_has_flag(tuple, TUPLE_IS_TEMPORARY) ?
@@ -380,7 +440,10 @@ private:
 			&read_views[memtx_tuple_rv_default];
 		if (rlist_empty(list))
 			return nullptr;
-		return rlist_last_entry(list, struct memtx_tuple_rv, link);
+		return rlist_last_entry(
+				list,
+				struct memtx_tuple_rv<struct memtx_tuple<bits>>,
+				link);
 	}
 
 	/**
@@ -388,7 +451,7 @@ private:
 	 * they were in use by a read view, linked in by memtx_tuple::in_gc.
 	 * We collect tuples from this list on allocation.
 	 */
-	static struct stailq gc;
+	static struct memtx_tuple_list<struct memtx_tuple<bits>> gc;
 	/**
 	 * Most recent read view's version.
 	 *
@@ -435,7 +498,8 @@ private:
 };
 
 template<class Allocator>
-struct stailq MemtxAllocator<Allocator>::gc;
+struct memtx_tuple_list<struct memtx_tuple<MemtxAllocator<Allocator>::bits>>
+				MemtxAllocator<Allocator>::gc;
 
 template<class Allocator>
 uint32_t MemtxAllocator<Allocator>::read_view_version;
