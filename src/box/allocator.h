@@ -89,7 +89,7 @@ allocator_settings_init(allocator_settings *settings, struct slab_cache *cache,
 class SmallAlloc
 {
 public:
-	static const int pointer_size = 64;
+	static const int pointer_size = 48;
 	static inline void
 	create(struct allocator_settings *settings)
 	{

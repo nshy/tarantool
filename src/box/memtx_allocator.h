@@ -45,6 +45,35 @@ struct memtx_tuple_gc_link<64> {
 	struct stailq_entry link;
 };
 
+static char *memtx_tuple_arena;
+static const size_t MEMTX_TUPLE_ARENA_MAX = 1ULL << 48;
+
+static_assert(sizeof(void *) == sizeof(uint64_t), "unexpected pointer size");
+
+template<>
+struct memtx_tuple_gc_link<48> {
+	char ptr[6];
+
+	inline void
+	set(struct memtx_tuple_gc_link *link)
+	{
+		uint64_t offset = (char *)link - memtx_tuple_arena;
+		assert(offset < MEMTX_TUPLE_ARENA_MAX);
+		uint64_t v = little_endian64_store(offset);
+		memcpy(ptr, &v, sizeof(ptr));
+	}
+
+	inline struct memtx_tuple_gc_link *
+	get()
+	{
+		uint64_t v;
+		memcpy(&v, ptr, sizeof(ptr));
+		uint64_t offset = little_endian64_load(v);
+		return (struct memtx_tuple_gc_link *)
+				(memtx_tuple_arena + offset);
+	}
+};
+
 /**
  * Memtx tuple sub-class.
  */
@@ -108,6 +137,57 @@ struct memtx_tuple_list<struct memtx_tuple<64>> {
 	{
 		stailq_concat(&tuples, &list->tuples);
 	}
+};
+
+template<>
+struct memtx_tuple_list<struct memtx_tuple<48>> {
+	static inline void
+	create(struct memtx_tuple_list *list)
+	{
+		list->head = nullptr;
+		list->tail = nullptr;
+	}
+
+	inline bool
+	is_empty()
+	{
+		return head == nullptr;
+	}
+
+	inline void
+	add_entry(struct memtx_tuple<48> *tuple) {
+		tuple->in_gc.set(head);
+		head = &tuple->in_gc;
+		if (tail == nullptr)
+			tail = &tuple->in_gc;
+	}
+
+	inline struct memtx_tuple<48> *
+	shift_entry() {
+		assert(head != nullptr && tail != nullptr);
+		struct memtx_tuple_gc_link<48> *shift = head;
+		head = head->get();
+		if (head == nullptr)
+			tail = nullptr;
+		return container_of(shift, struct memtx_tuple<48>, in_gc);
+	}
+
+	inline void
+	concat(struct memtx_tuple_list *list)
+	{
+		if (!is_empty() && !list->is_empty()) {
+			tail->set(list->head);
+			tail = list->tail;
+		} else if (is_empty()){
+			head = list->head;
+			tail = list->tail;
+		}
+		create(list);
+	}
+
+private:
+	struct memtx_tuple_gc_link<48> *head;
+	struct memtx_tuple_gc_link<48> *tail;
 };
 
 /**

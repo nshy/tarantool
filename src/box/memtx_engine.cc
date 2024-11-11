@@ -1787,6 +1787,7 @@ memtx_engine_new(const char *snap_dirname, bool force_recovery,
 	quota_init(&memtx->quota, tuple_arena_max_size);
 	tuple_arena_create(&memtx->arena, &memtx->quota, prealloc,
 			   SLAB_SIZE, dontdump, "memtx");
+	memtx_tuple_arena = (char *)memtx->arena.arena;
 	slab_cache_create(&memtx->slab_cache, &memtx->arena);
 	float actual_alloc_factor;
 	allocator_settings alloc_settings;

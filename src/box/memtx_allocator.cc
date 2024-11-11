@@ -87,6 +87,10 @@ template
 struct memtx_tuple_rv<struct memtx_tuple<64>> *
 memtx_tuple_rv_new(uint32_t version, struct rlist *list);
 
+template
+struct memtx_tuple_rv<struct memtx_tuple<48>> *
+memtx_tuple_rv_new(uint32_t version, struct rlist *list);
+
 template<class memtx_tuple>
 void
 memtx_tuple_rv_delete(struct memtx_tuple_rv<memtx_tuple> *rv,
@@ -155,6 +159,13 @@ memtx_tuple_rv_delete(struct memtx_tuple_rv<struct memtx_tuple<64>> *rv,
 		      struct memtx_tuple_list<struct memtx_tuple<64>> *tuples_to_free,
 		      size_t *mem_freed);
 
+template
+void
+memtx_tuple_rv_delete(struct memtx_tuple_rv<struct memtx_tuple<48>> *rv,
+		      struct rlist *list,
+		      struct memtx_tuple_list<struct memtx_tuple<48>> *tuples_to_free,
+		      size_t *mem_freed);
+
 template<class memtx_tuple>
 void
 memtx_tuple_rv_add(struct memtx_tuple_rv<memtx_tuple> *rv,
@@ -186,6 +197,11 @@ template
 void
 memtx_tuple_rv_add(struct memtx_tuple_rv<struct memtx_tuple<64>> *rv,
 		   struct memtx_tuple<64> *tuple, size_t mem_used);
+
+template
+void
+memtx_tuple_rv_add(struct memtx_tuple_rv<struct memtx_tuple<48>> *rv,
+		   struct memtx_tuple<48> *tuple, size_t mem_used);
 
 void
 memtx_allocators_init(struct allocator_settings *settings)

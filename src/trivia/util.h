@@ -818,6 +818,38 @@ strtoupper(char *s);
 char *
 strtoupperdup(const char *s);
 
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+
+static inline uint64_t
+little_endian64_store(uint64_t v)
+{
+	return __builtin_bswap64(v);
+}
+
+static inline uint64_t
+little_endian64_load(uint64_t v)
+{
+	return __builtin_bswap64(v);
+}
+
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+
+static inline uint64_t
+little_endian64_store(uint64_t v)
+{
+	return v;
+}
+
+static inline uint64_t
+little_endian64_load(uint64_t v)
+{
+	return v;
+}
+
+#else
+#error Unsupported __BYTE_ORDER__
+#endif
+
 #if !defined(__cplusplus) && !defined(static_assert)
 # define static_assert _Static_assert
 #endif
