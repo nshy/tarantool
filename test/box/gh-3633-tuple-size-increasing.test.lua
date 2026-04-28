@@ -18,6 +18,7 @@ size = 500 * 1024
 str = digest.urandom(size)
 -- insert tuples, until we get error due to no enough of memory
 for i = 1, 1049 do s:insert({i, str}) end
+box.cfg{memtx_memory = box.cfg.memtx_memory + 16 * 1024 * 1024}
 -- truncate space, and collect garbage (free previous allocated memory)
 s:truncate()
 collectgarbage('collect')
@@ -33,6 +34,9 @@ for j = 9, 40 do
     collectgarbage('collect')
 end;
 test_run:cmd("setopt delimiter ''");
+
+box.slab.info().quota_used
+box.slab.info().quota_size
 
 box.space.test:drop()
 

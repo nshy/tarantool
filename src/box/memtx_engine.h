@@ -124,6 +124,7 @@ struct memtx_engine {
 	memtx_on_indexes_built_cb on_indexes_built_cb;
 	/** Common quota for tuples and indexes. */
 	struct quota quota;
+	size_t memtx_quota;
 	/**
 	 * Common slab arena for tuples and indexes.
 	 * If you decide to use it for anything other than
@@ -249,6 +250,12 @@ memtx_engine_set_use_sort_data(struct memtx_engine *memtx, bool value);
 void
 memtx_engine_set_max_tuple_size(struct memtx_engine *memtx, size_t max_size);
 
+static inline bool
+memtx_engine_memory_overflow(struct memtx_engine *memtx)
+{
+	return quota_used(&memtx->quota) > memtx->memtx_quota;
+}
+
 /** Tuple format vtab for memtx engine. */
 extern struct tuple_format_vtab memtx_tuple_format_vtab;
 
@@ -351,6 +358,7 @@ memtx_iterator_next(struct iterator *it, struct tuple **ret);
  */
 int
 memtx_tuple_validate(struct tuple_format *format, struct tuple *tuple);
+
 
 #if defined(__cplusplus)
 } /* extern "C" */

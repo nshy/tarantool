@@ -8,7 +8,7 @@ local bool_env = 'ERRINJ_TESTING=true ' ..
                  'ERRINJ_WAL_IO=True ' ..
                  'ERRINJ_WAL_ROTATE=TRUE ' ..
                  'ERRINJ_WAL_WRITE=false ' ..
-                 'ERRINJ_INDEX_ALLOC=False ' ..
+                 'ERRINJ_IPROTO_DISABLE_ID=False ' ..
                  'ERRINJ_WAL_WRITE_DISK=FALSE'
 local integer_env = 'ERRINJ_WAL_WRITE_PARTIAL=2 ' ..
                     'ERRINJ_WAL_FALLOCATE=+2 ' ..

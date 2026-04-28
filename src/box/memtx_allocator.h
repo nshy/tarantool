@@ -431,7 +431,8 @@ private:
 		collect_garbage();
 		void *ptr = Allocator::alloc(size);
 		if (ptr == nullptr)
-			return nullptr;
+			panic("Can't allocate %zu bytes in memtx_allocator",
+			      size);
 		struct memtx_block *block = (struct memtx_block *)ptr;
 		stats.used_total += size;
 		/* Use low-resolution clock, because it's hot path. */

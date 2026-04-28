@@ -1561,12 +1561,6 @@ local errinj_set = {
         enable = enable_errinj_boolean,
         disable = disable_errinj_boolean,
     },
-    -- Set to true to inject OOM while allocating an index extend
-    -- in memtx.
-    ERRINJ_INDEX_ALLOC = {
-        enable = enable_errinj_boolean,
-        disable = disable_errinj_boolean,
-    },
     -- Set to number of passes before starting to fail primitive index data
     -- operations.
     ERRINJ_INDEX_OOM_COUNTDOWN = {

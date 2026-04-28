@@ -13,7 +13,7 @@ test:test('Set boolean error injections', function(test)
     test:is(errinj.get('ERRINJ_WAL_IO'), true, 'True')
     test:is(errinj.get('ERRINJ_WAL_ROTATE'), true, 'TRUE')
     test:is(errinj.get('ERRINJ_WAL_WRITE'), false, 'false')
-    test:is(errinj.get('ERRINJ_INDEX_ALLOC'), false, 'False')
+    test:is(errinj.get('ERRINJ_IPROTO_DISABLE_ID'), false, 'False')
     test:is(errinj.get('ERRINJ_WAL_WRITE_DISK'), false, 'FALSE')
 end)
 

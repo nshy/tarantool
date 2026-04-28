@@ -2007,6 +2007,7 @@ memtx_engine_new(const char *snap_dirname, bool force_recovery,
 	 */
 	if (tuple_arena_max_size < MIN_MEMORY_QUOTA)
 		tuple_arena_max_size = MIN_MEMORY_QUOTA;
+	memtx->memtx_quota = tuple_arena_max_size;
 
 	/* Apply lowest allowed objsize bound. */
 	if (objsize_min < OBJSIZE_MIN)
@@ -2023,7 +2024,7 @@ memtx_engine_new(const char *snap_dirname, bool force_recovery,
 	}
 
 	/* Initialize tuple allocator. */
-	quota_init(&memtx->quota, tuple_arena_max_size);
+	quota_init(&memtx->quota, QUOTA_MAX);
 	tuple_arena_create(&memtx->arena, &memtx->quota, tuple_arena_max_size,
 			   SLAB_SIZE, dontdump, "memtx");
 	slab_cache_create(&memtx->slab_cache, &memtx->arena);
@@ -2232,13 +2233,14 @@ memtx_engine_set_memory(struct memtx_engine *memtx, size_t size)
 	if (size < MIN_MEMORY_QUOTA)
 		size = MIN_MEMORY_QUOTA;
 
-	if (DIV_ROUND_UP(size, QUOTA_UNIT_SIZE) <
-	    quota_total(&memtx->quota) / QUOTA_UNIT_SIZE) {
+	if (size < memtx->memtx_quota) {
 		diag_set(ClientError, ER_CFG, "memtx_memory",
 			 "cannot decrease memory size at runtime");
 		return -1;
 	}
-	quota_set(&memtx->quota, size);
+	/* Similar to quota_set(). */
+	memtx->memtx_quota = DIV_ROUND_UP(size,
+					  QUOTA_UNIT_SIZE) * QUOTA_UNIT_SIZE;
 	return 0;
 }
 
@@ -2303,19 +2305,8 @@ memtx_tuple_new_raw_impl(struct tuple_format *format, const char *data,
 		error_log(diag_last_error(diag_get()));
 		goto end;
 	}
-
-	while ((block = MemtxAllocator<ALLOC>::alloc(tuple_len, data_offset,
-						     make_compact)) == NULL) {
-		bool stop;
-		memtx_engine_run_gc(memtx, &stop);
-		if (stop)
-			break;
-	}
-	if (block == NULL) {
-		diag_set(OutOfMemory, total, "slab allocator", "memtx_tuple");
-		goto end;
-	}
-
+	block = MemtxAllocator<ALLOC>::alloc(tuple_len, data_offset,
+					      make_compact);
 	tuple = memtx_block_to_tuple(block);
 	tuple_create_base(tuple, 0, tuple_format_id(format));
 	if (format->is_temporary)
@@ -2418,32 +2409,17 @@ memtx_index_extent_alloc(struct matras_allocator *matras_allocator)
 	struct memtx_engine *memtx = container_of(matras_allocator,
 						  struct memtx_engine,
 						  index_extent_allocator);
-	ERROR_INJECT(ERRINJ_INDEX_ALLOC, { goto fail; });
-	void *ret;
-	while ((ret = mempool_alloc(&memtx->index_extent_pool)) == NULL) {
+	while (memtx_engine_memory_overflow(memtx)) {
 		bool stop;
 		memtx_engine_run_gc(memtx, &stop);
 		if (stop)
 			break;
 	}
+	void *ret = mempool_alloc(&memtx->index_extent_pool);
 	if (ret == NULL)
-		goto fail;
+		panic("Can't allocate %zu bytes for memtx index extent",
+		      MEMTX_EXTENT_SIZE);
 	return ret;
-fail:
-	if (in_txn() != NULL && txn_has_flag(in_txn(), TXN_STMT_ROLLBACK)) {
-		/*
-		 * We cannot sanely reserve blocks for rollback because strictly
-		 * speaking the whole index can change. We cannot tolerate
-		 * allocation failure also. So just allocate outside of the
-		 * memtx arena quota.
-		 */
-		ret = xmalloc(MEMTX_EXTENT_SIZE);
-		mh_ptr_put(memtx->malloc_extents, (const void **)&ret,
-			   NULL, NULL);
-		return ret;
-	}
-	diag_set(OutOfMemory, MEMTX_EXTENT_SIZE, "mempool", "new slab");
-	return NULL;
 }
 
 /**

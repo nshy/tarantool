@@ -365,6 +365,11 @@ static int
 memtx_space_execute_replace(struct space *space, struct txn *txn,
 			    struct request *request, struct tuple **result)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	int rc = -1;
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	struct tuple *new_tuple =
@@ -418,6 +423,11 @@ static int
 memtx_space_execute_delete(struct space *space, struct txn *txn,
 			   struct request *request, struct tuple **result)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	/* Try to find the tuple by unique key. */
 	struct index *pk = index_find(space, request->index_id);
@@ -456,6 +466,11 @@ static int
 memtx_space_execute_update(struct space *space, struct txn *txn,
 			   struct request *request, struct tuple **result)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	int rc = -1;
 	/* Try to find the tuple by unique key. */
@@ -530,6 +545,11 @@ static int
 memtx_space_execute_upsert(struct space *space, struct txn *txn,
 			   struct request *request)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	/*
 	 * Check all tuple fields: we should produce an error on
@@ -695,6 +715,11 @@ static int
 memtx_space_ephemeral_replace(struct space *space, const char *tuple,
 				      const char *tuple_end)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	struct tuple *new_tuple =
 		space->format->vtab.tuple_new(space->format, tuple, tuple_end);
@@ -727,6 +752,11 @@ memtx_space_ephemeral_replace(struct space *space, const char *tuple,
 static int
 memtx_space_ephemeral_delete(struct space *space, const char *key)
 {
+	struct memtx_engine *memtx = (struct memtx_engine *)space->engine;
+	if (memtx_engine_memory_overflow(memtx)) {
+		diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+		return -1;
+	}
 	struct memtx_space *memtx_space = (struct memtx_space *)space;
 	struct index *primary_index = space_index(space, 0 /* primary index*/);
 	if (primary_index == NULL)
@@ -1458,6 +1488,11 @@ memtx_space_build_index(struct space *src_space, struct index *new_index,
 		 */
 		struct tuple *old_tuple;
 		struct tuple *successor;
+		if (memtx_engine_memory_overflow(memtx)) {
+			diag_set(OutOfMemory, 0, "slab allocator", "memtx_tuple");
+			rc = -1;
+			break;
+		}
 		rc = memtx_index_replace(new_index, NULL, tuple, DUP_INSERT,
 					 &old_tuple, &successor);
 		if (rc != 0)

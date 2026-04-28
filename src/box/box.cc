@@ -4464,7 +4464,7 @@ box_slab_info(enum box_slab_info_type type)
 		/** System allocator does not use arena. */
 		return stats.small.used + index_stats.totals.used;
 	case BOX_SLAB_INFO_QUOTA_SIZE:
-		return quota_total(&memtx->quota);
+		return memtx->memtx_quota;
 	case BOX_SLAB_INFO_QUOTA_USED:
 		return quota_used(&memtx->quota);
 	default:

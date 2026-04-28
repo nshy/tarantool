@@ -21,6 +21,9 @@ end)
 g.after_each(function(cg)
     cg.server:exec(function()
         if box.space.test ~= nil then
+            print(box.slab.stats().quota_used)
+            -- Increase quota to be able to drop space.
+            box.cfg{memtx_memory = box.slab.info().quota_used}
             box.space.test:drop()
         end
     end)
