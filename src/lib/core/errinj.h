@@ -178,6 +178,7 @@ struct errinj {
 	_(ERRINJ_VY_LOG_FILE_RENAME, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_LOG_FLUSH, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_LOG_WRITE_BAD_RECORDS, ERRINJ_BOOL, {.bparam = false}) \
+	_(ERRINJ_VY_LOG_DELAY_DURATION, ERRINJ_DOUBLE, {.dparam = 0}) \
 	_(ERRINJ_VY_POINT_LOOKUP_DELAY, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_QUOTA_DELAY, ERRINJ_BOOL, {.bparam = false}) \
 	_(ERRINJ_VY_READ_PAGE, ERRINJ_BOOL, {.bparam = false}) \
