@@ -110,6 +110,16 @@ enum say_syslog_server_type {
 	SAY_SYSLOG_REMOTE
 };
 
+enum say_syslog_format {
+	SAY_SYSLOG_FORMAT_RFC3164 = 0,
+	SAY_SYSLOG_FORMAT_RFC5424
+};
+
+enum say_syslog_timezone {
+	SAY_SYSLOG_TIMEZONE_UTC = 0,
+	SAY_SYSLOG_TIMEZONE_LOCAL
+};
+
 enum say_logger_type {
 	/**
 	 * Before the app server core is initialized, we do not
@@ -193,6 +203,9 @@ struct log {
 	pid_t pid;
 	/* Application identifier used to group syslog messages. */
 	char *syslog_ident;
+	enum say_syslog_format syslog_format;
+	enum say_syslog_timezone syslog_timezone;
+	char *instance_name;
 	/**
 	 * Counter identifying number of threads executing log_rotate.
 	 * Protected by rotate_mutex as it is accessed from different
@@ -320,6 +333,15 @@ say_get_log_level(void);
  */
 void
 say_set_log_format(enum say_format format);
+
+void
+say_set_syslog_format(enum say_syslog_format syslog_format);
+
+void
+say_set_syslog_timezone(enum say_syslog_timezone syslog_timezone);
+
+void
+say_set_instance_name(const char *name);
 
 /**
  * Update the log module configuration for the default logger.

@@ -125,6 +125,9 @@ static struct log log_boot = {
 	.format_func = say_format_boot,
 	.pid = 0,
 	.syslog_ident = NULL,
+	.syslog_format = SAY_SYSLOG_FORMAT_RFC3164,
+	.syslog_timezone = SAY_SYSLOG_TIMEZONE_UTC,
+	.instance_name = NULL,
 };
 
 /** Default logger used after bootstrap. */
@@ -213,6 +216,16 @@ get_current_time(struct tm *tm, double *tm_sec)
 	ev_tstamp now = ev_time();
 	time_t now_seconds = (time_t)now;
 	localtime_r(&now_seconds, tm);
+	*tm_sec = now - now_seconds + tm->tm_sec;
+}
+
+static void
+get_current_time_utc(struct tm *tm, double *tm_sec)
+{
+	/* Don't use ev_now() since it requires a working event loop. */
+	ev_tstamp now = ev_time();
+	time_t now_seconds = (time_t)now;
+	gmtime_r(&now_seconds, tm);
 	*tm_sec = now - now_seconds + tm->tm_sec;
 }
 
@@ -345,6 +358,24 @@ say_set_log_format(enum say_format format)
 
 	log_set_format(log_default, format_func);
 	log_format = format;
+}
+
+void
+say_set_syslog_format(enum say_syslog_format syslog_format)
+{
+	log_default->syslog_format = syslog_format;
+}
+
+void
+say_set_syslog_timezone(enum say_syslog_timezone syslog_timezone)
+{
+	log_default->syslog_timezone = syslog_timezone;
+}
+
+void
+say_set_instance_name(const char *name)
+{
+	log_default->instance_name = name != NULL ? xstrdup(name) : NULL;
 }
 
 void
@@ -712,9 +743,7 @@ log_syslog_init(struct log *log, const char *init_str)
 	log->syslog_server_type = opts.server_type;
 	if (log->syslog_server_type != SAY_SYSLOG_DEFAULT)
 		log->path = xstrdup(opts.server_path);
-	if (opts.identity == NULL)
-		log->syslog_ident = xstrdup("tarantool");
-	else
+	if (opts.identity != NULL)
 		log->syslog_ident = xstrdup(opts.identity);
 
 	if (opts.facility == syslog_facility_MAX)
@@ -740,6 +769,9 @@ log_create(struct log *log, const char *init_str, int nonblock)
 {
 	log->pid = 0;
 	log->syslog_ident = NULL;
+	log->syslog_format = SAY_SYSLOG_FORMAT_RFC3164;
+	log->syslog_timezone = SAY_SYSLOG_TIMEZONE_UTC;
+	log->instance_name = NULL;
 	log->path = NULL;
 	log->format_func = say_format_plain;
 	log->level = S_INFO;
@@ -1196,12 +1228,15 @@ format_func_adapter(char *buf, int len, struct log *log, int level,
  * - Identation is application name. By default it is "tarantool";
  */
 static int
-format_syslog_header(char *buf, int len, int level,
-		     enum syslog_facility facility, const char *ident)
+format_syslog_header_rfc3164(char *buf, int len, int level,
+			     enum syslog_facility facility, const char *ident)
 {
 	struct tm tm;
 	double tm_sec;
 	get_current_time(&tm, &tm_sec);
+
+	if (ident == NULL)
+		ident = "tarantool";
 
 	int total = 0;
 
@@ -1211,6 +1246,63 @@ format_syslog_header(char *buf, int len, int level,
 	SNPRINT(total, strftime, buf, len, "%h %e %T ", &tm);
 	SNPRINT(total, snprintf, buf, len, "%s[%d]: ", ident,
 		getpid());
+	return total;
+}
+
+static int
+format_syslog_header_rfc5424(char *buf, int len, int level,
+			     enum syslog_facility facility, const char *ident,
+			     const char *instance_name,
+			     enum say_syslog_timezone timezone)
+{
+	struct tm tm;
+	double tm_sec;
+	/* Timezone should formatted to +HH:MM or -HH:MM. */
+	char tz_str[6];
+	if (timezone == SAY_SYSLOG_TIMEZONE_UTC) {
+		get_current_time_utc(&tm, &tm_sec);
+	} else {
+		assert(timezone == SAY_SYSLOG_TIMEZONE_LOCAL);
+		get_current_time(&tm, &tm_sec);
+		VERIFY(strftime(tz_str, sizeof(tz_str), "%z", &tm) + 1 ==
+		       sizeof(tz_str));
+	}
+
+	char hostname[HOST_NAME_MAX + 1];
+	if (gethostname(hostname, sizeof(hostname)) != 0)
+		snprintf(hostname, lengthof(hostname), "-");
+
+	if (ident == NULL) {
+		if (instance_name != NULL)
+			ident = instance_name;
+		else
+			ident = "tarantool";
+	}
+
+	int total = 0;
+
+	int prio = (facility << 3) | level_to_syslog_priority(level);
+	SNPRINT(total, snprintf, buf, len, "<%d>", prio);
+	/* Print procol version. */
+	SNPRINT(total, snprintf, buf, len, "1 ");
+
+	SNPRINT(total, strftime, buf, len, "%FT%H:%M", &tm);
+	SNPRINT(total, snprintf, buf, len, ":%06.3f", tm_sec);
+
+	if (timezone == SAY_SYSLOG_TIMEZONE_UTC) {
+		SNPRINT(total, snprintf, buf, len, "Z ");
+	} else {
+		/* strftime("%z") does not print : in timezone. */
+		SNPRINT(total, snprintf, buf, len, "%.3s:", tz_str);
+		SNPRINT(total, snprintf, buf, len, "%s ", tz_str + 3);
+	}
+
+	SNPRINT(total, snprintf, buf, len, "%s ", hostname);
+	/* TODO box.info.name. */
+	SNPRINT(total, snprintf, buf, len, "%s ", ident);
+	SNPRINT(total, snprintf, buf, len, "%i ", getpid());
+	/* Print stubs for MSGID and STRUCTURED-DATA. */
+	SNPRINT(total, snprintf, buf, len, "- - ");
 	return total;
 }
 
@@ -1568,6 +1660,7 @@ log_destroy(struct log *log)
 	mh_strnu32_delete(log->modules);
 	tt_pthread_mutex_destroy(&log->modules_mutex);
 	free(log->syslog_ident);
+	free(log->instance_name);
 	free(log->path);
 	rlist_del_entry(log, in_log_list);
 	tt_pthread_mutex_destroy(&log->rotate_mutex);
@@ -1587,8 +1680,19 @@ format_log_entry(struct log *log, int level, const char *module,
 	int len = SAY_BUF_LEN_MAX;
 
 	if (log->type == SAY_LOGGER_SYSLOG) {
-		SNPRINT(total, format_syslog_header, buf, len,
-			level, log->syslog_facility, log->syslog_ident);
+		switch (log->syslog_format) {
+		case SAY_SYSLOG_FORMAT_RFC3164:
+			SNPRINT(total, format_syslog_header_rfc3164, buf, len,
+				level, log->syslog_facility, log->syslog_ident);
+			break;
+		case SAY_SYSLOG_FORMAT_RFC5424:
+			SNPRINT(total, format_syslog_header_rfc5424, buf, len,
+				level, log->syslog_facility, log->syslog_ident,
+				log->instance_name, log->syslog_timezone);
+			break;
+		default:
+			unreachable();
+		}
 	}
 	SNPRINT(total, format_func_adapter, buf, len, log, level, module,
 		filename, line, error, format, ap);

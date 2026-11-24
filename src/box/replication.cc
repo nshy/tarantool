@@ -617,6 +617,8 @@ replica_set_name(struct replica *replica, const char *name)
 	strlcpy(replica->name, name, NODE_NAME_SIZE_MAX);
 	if (tt_uuid_is_equal(&INSTANCE_UUID, &replica->uuid)) {
 		strlcpy(INSTANCE_NAME, name, NODE_NAME_SIZE_MAX);
+		say_set_instance_name(*INSTANCE_NAME == 0 ? NULL :
+							    INSTANCE_NAME);
 		box_broadcast_id();
 	}
 	if (*name != 0) {

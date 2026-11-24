@@ -21,6 +21,12 @@ ffi.cdef[[
     say_set_log_format(enum say_format format);
 
     void
+    say_set_syslog_format(enum say_syslog_format syslog_format);
+
+    void
+    say_set_syslog_timezone(enum say_syslog_timezone syslog_timezone);
+
+    void
     say_set_modules(const struct say_module *modules);
 
     int
@@ -65,6 +71,17 @@ ffi.cdef[[
         SF_PLAIN,
         SF_JSON
     };
+
+    enum say_syslog_format {
+        SAY_SYSLOG_FORMAT_RFC3164,
+        SAY_SYSLOG_FORMAT_RFC5424
+    };
+
+    enum say_syslog_timezone {
+        SAY_SYSLOG_TIMEZONE_UTC,
+        SAY_SYSLOG_TIMEZONE_LOCAL
+    };
+
     pid_t log_pid;
     extern int log_level;
     extern int log_format;
@@ -124,9 +141,19 @@ local log_level_keys = {
     ['debug']       = ffi.C.S_DEBUG,
 }
 
-local function log_level_list()
+local syslog_format_str2num = {
+    ['rfc3164'] = ffi.C.SAY_SYSLOG_FORMAT_RFC3164,
+    ['rfc5424'] = ffi.C.SAY_SYSLOG_FORMAT_RFC5424,
+}
+
+local syslog_timezone_str2num = {
+    ['utc'] = ffi.C.SAY_SYSLOG_TIMEZONE_UTC,
+    ['local'] = ffi.C.SAY_SYSLOG_TIMEZONE_LOCAL,
+}
+
+local function log_options_list(keys)
     local keyset = {}
-    for k in pairs(log_level_keys) do
+    for k in pairs(keys) do
         keyset[#keyset + 1] = k
     end
     return table.concat(keyset, ',')
@@ -140,6 +167,8 @@ local default_cfg = {
     level           = S_INFO,
     modules         = nil,
     format          = fmt_num2str[ffi.C.SF_PLAIN],
+    syslog_format   = 'rfc3164',
+    syslog_timezone = 'utc',
 }
 
 local log_cfg = table.copy(default_cfg)
@@ -153,6 +182,8 @@ local log2box_keys = {
     ['level']           = 'log_level',
     ['modules']         = 'log_modules',
     ['format']          = 'log_format',
+    ['syslog_format']   = 'syslog_format',
+    ['syslog_timezone'] = 'syslog_timezone',
 }
 
 -- Return level as a number, level must be valid.
@@ -278,6 +309,8 @@ local option_types = {
     level = 'number, string',
     modules = 'table',
     format = 'string',
+    syslog_format = 'string',
+    syslog_timezone = 'string',
 }
 
 local log_initialized = false
@@ -286,6 +319,8 @@ local log_initialized = false
 local function log_C_cfg(cfg)
     local cfg_C = table.copy(cfg)
     cfg_C.level = log_normalize_level(cfg.level)
+    cfg_C.syslog_format = syslog_format_str2num[cfg.syslog_format];
+    cfg_C.syslog_timezone = syslog_timezone_str2num[cfg.syslog_timezone];
     local nonblock
     if cfg.nonblock ~= nil then
         nonblock = cfg.nonblock and 1 or 0
@@ -307,7 +342,7 @@ end
 -- Check that level is a number or a valid string.
 local function log_check_level(level, option_name)
     if type(level) == 'string' and log_level_keys[level] == nil then
-        local err = ("expected %s"):format(log_level_list())
+        local err = ("expected %s"):format(log_options_list(log_level_keys))
         box.error(box.error.CFG, option_name, err)
     end
 end
@@ -332,6 +367,17 @@ end
 local function log_check_cfg(cfg)
     log_check_level(cfg.level, 'log_level')
     log_check_modules(cfg.modules)
+
+    if syslog_format_str2num[cfg.syslog_format] == nil then
+        local err = ("expected %s"):format(
+                            log_options_list(syslog_format_str2num))
+        box.error(box.error.CFG, 'syslog_format', err)
+    end
+    if syslog_timezone_str2num[cfg.syslog_timezone] == nil then
+        local err = ("expected %s"):format(
+                            log_options_list(syslog_timezone_str2num))
+        box.error(box.error.CFG, 'syslog_timezone', err)
+    end
 
     if log_initialized then
         if log_cfg.log ~= cfg.log then
@@ -426,6 +472,8 @@ local function log_configure(self, cfg, box_api)
     ffi.C.say_logger_init(cfg_C.log, cfg_C.level,
                           cfg_C.nonblock, cfg_C.format)
     set_log_modules(cfg.modules)
+    ffi.C.say_set_syslog_format(cfg_C.syslog_format)
+    ffi.C.say_set_syslog_timezone(cfg_C.syslog_timezone)
     log_initialized = true
 
     for o in pairs(option_types) do

@@ -129,6 +129,8 @@ local default_cfg = {
     log_level           = log.cfg.level,
     log_modules         = log.cfg.modules,
     log_format          = log.cfg.format,
+    syslog_format       = log.cfg.syslog_format,
+    syslog_timezone     = log.cfg.syslog_timezone,
 
     audit_log           = ifdef_audit(nil),
     audit_nonblock      = ifdef_audit(true),
@@ -340,6 +342,8 @@ local template_cfg = {
     log_level           = 'number, string',
     log_modules         = 'table',
     log_format          = 'string',
+    syslog_format       = 'string',
+    syslog_timezone     = 'string',
 
     audit_log           = ifdef_audit('string'),
     audit_nonblock      = ifdef_audit('boolean'),
@@ -762,6 +766,8 @@ local dynamic_cfg_modules = {
             log_modules = true,
             log_format = true,
             log_nonblock = true,
+            syslog_format = true,
+            syslog_timezone = true,
         },
         skip_at_load = true,
     }
