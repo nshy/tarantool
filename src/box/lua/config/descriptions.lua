@@ -2109,6 +2109,16 @@ I['log.syslog.facility'] = format_text([[
     To write logs to syslog, you need to set `log.to` to `syslog`.
 ]])
 
+I['log.syslog.format'] = format_text([[
+    Set a syslog message format. This option accepts one of the following
+    values:
+
+    - `rfc3164`: the legacy syslog message format.
+    - `rfc5424`: the modern syslog message format.
+
+    To write logs to syslog, you need to set `log.to` to `syslog`.
+]])
+
 I['log.syslog.identity'] = format_text([[
     Specify an application name used to identify Tarantool messages in
     syslog logs. To write logs to syslog, you need to set `log.to` to `syslog`.
@@ -2121,6 +2131,16 @@ I['log.syslog.server'] = format_text([[
     - An address. Example: `127.0.0.1:514`.
     - A Unix socket path starting with `unix:`.
       Examples: `unix:/dev/log` on Linux or `unix:/var/run/syslog` on macOS.
+
+    To write logs to syslog, you need to set `log.to` to `syslog`.
+]])
+
+I['log.syslog.timezone'] = format_text([[
+    Set a timezone for timestamps in syslog messages written in the `rfc5424`
+    format. This option accepts one of the following values:
+
+    - `utc`: the UTC timezone.
+    - `local`: the timezone of the host system.
 
     To write logs to syslog, you need to set `log.to` to `syslog`.
 ]])

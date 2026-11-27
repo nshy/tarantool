@@ -11,12 +11,24 @@ local g1 = t.group('initial_box_cfg')
 local VARDIR = fio.abspath(os.getenv('VARDIR') or 'test/var')
 local SOCK_PATH = fio.pathjoin(VARDIR, 'syslog.sock')
 
-local read_log = function(sock)
+-- The priority is composed of the default facility (local7)
+-- and the warn level.
+local PRIORITY_WARN = 188
+
+local function bind_socket()
+    local sock = socket('AF_UNIX', 'SOCK_DGRAM', 0)
+    t.assert(sock)
+    fio.unlink(SOCK_PATH)
+    t.assert(sock:bind('unix/', SOCK_PATH))
+    return sock
+end
+
+local function read_log(sock)
     return sock:recv(16 * 1024)
 end
 
-local log_pattern_5424 = function(priority, syslog_timezone, identity, pid,
-                                  message)
+local function log_pattern_5424(priority, syslog_timezone, identity, pid,
+                                message)
     local tz_pattern = syslog_timezone == 'utc' and 'Z' or '%+%d%d:%d%d'
     local datetime_pattern = '%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d%.%d%d%d'
     return string.format('^<%d>1 %s%s %s %s %s %%- %%- main/.* %%a> %s$',
@@ -24,7 +36,7 @@ local log_pattern_5424 = function(priority, syslog_timezone, identity, pid,
                 identity, pid or '%d+', message)
 end
 
-local log_pattern_3164 = function(priority, identity, pid, message)
+local function log_pattern_3164 (priority, identity, pid, message)
     local datetime_pattern = '%a+ %d%d %d%d:%d%d:%d%d'
     return string.format('^<%d>%s %s%%[%s%%]: main/.* W> %s$',
                          priority, datetime_pattern, identity, pid or '%d+',
@@ -32,10 +44,7 @@ local log_pattern_3164 = function(priority, identity, pid, message)
 end
 
 g1.before_all(function(cg)
-    cg.sock = socket('AF_UNIX', 'SOCK_DGRAM', 0)
-    t.assert(cg.sock)
-    fio.unlink(SOCK_PATH)
-    t.assert(cg.sock:bind('unix/', SOCK_PATH))
+    cg.sock = bind_socket()
 end)
 
 g1.after_all(function(cg)
@@ -138,12 +147,12 @@ g1.test_initial_cfg = function(cg)
             syslog_timezone = syslog_timezone,
         }})
         if syslog_format == 'rfc5424' then
-            local pattern = log_pattern_5424(188, syslog_timezone, 'tt', nil,
-                                             'xxx')
+            local pattern = log_pattern_5424(PRIORITY_WARN, syslog_timezone,
+                                             'tt', nil, 'xxx')
             t.assert_str_matches(read_log(cg.sock), pattern)
         else
             t.assert_equals(syslog_format, 'rfc3164')
-            local pattern = log_pattern_3164(188, 'tt', nil, 'xxx')
+            local pattern = log_pattern_3164(PRIORITY_WARN, 'tt', nil, 'xxx')
             t.assert_str_matches(read_log(cg.sock), pattern)
         end
     end
@@ -163,10 +172,7 @@ end
 local g2 = t.group('indentity', {{}, {identity = 'my_identity'}})
 
 g2.before_all(function(cg)
-    cg.sock = socket('AF_UNIX', 'SOCK_DGRAM', 0)
-    t.assert(cg.sock)
-    fio.unlink(SOCK_PATH)
-    t.assert(cg.sock:bind('unix/', SOCK_PATH))
+    cg.sock = bind_socket()
     local log = string.format('syslog:server=unix:%s', SOCK_PATH)
     if cg.params.identity then
         log = log .. string.format(',identity=%s', cg.params.identity)
@@ -192,7 +198,7 @@ g2.test_identity = function(cg)
         require('log').warn('xxx')
     end)
     local identity = cg.params.identity or 'tarantool'
-    local pattern = log_pattern_5424(188, 'utc', identity,
+    local pattern = log_pattern_5424(PRIORITY_WARN, 'utc', identity,
                                      cg.server.process.pid, 'xxx')
     t.assert_str_matches(read_log(cg.sock), pattern)
     cg.server:exec(function()
@@ -202,17 +208,14 @@ g2.test_identity = function(cg)
         require('log').warn('xxx')
     end)
     local identity = cg.params.identity or 'my_name'
-    local pattern = log_pattern_5424(188, 'utc', identity,
+    local pattern = log_pattern_5424(PRIORITY_WARN, 'utc', identity,
                                      cg.server.process.pid, 'xxx')
 end
 
 local g3 = t.group('priority', {{}, {facility = 'daemon'}})
 
 g3.before_all(function(cg)
-    cg.sock = socket('AF_UNIX', 'SOCK_DGRAM', 0)
-    t.assert(cg.sock)
-    fio.unlink(SOCK_PATH)
-    t.assert(cg.sock:bind('unix/', SOCK_PATH))
+    cg.sock = bind_socket()
     local log = string.format('syslog:server=unix:%s', SOCK_PATH)
     if cg.params.facility then
         log = log .. string.format(',facility=%s', cg.params.facility)
@@ -237,7 +240,7 @@ g3.test_priority = function(cg)
     cg.server:exec(function()
         require('log').warn('xxx')
     end)
-    local priority = cg.params.facility and 28 or 188
+    local priority = cg.params.facility and 28 or PRIORITY_WARN
     local pattern = log_pattern_5424(priority, 'utc', 'tarantool',
                                      cg.server.process.pid, 'xxx')
     t.assert_str_matches(read_log(cg.sock), pattern)
@@ -253,10 +256,7 @@ end
 local g4 = t.group('dynamic')
 
 g4.before_all(function(cg)
-    cg.sock = socket('AF_UNIX', 'SOCK_DGRAM', 0)
-    t.assert(cg.sock)
-    fio.unlink(SOCK_PATH)
-    t.assert(cg.sock:bind('unix/', SOCK_PATH))
+    cg.sock = bind_socket()
     cg.server = server:new({
         box_cfg = {
             log = string.format('syslog:server=unix:%s,identity=tt', SOCK_PATH),
@@ -291,12 +291,12 @@ g4.test_test_cfg_dynamic = function(cg)
             return box.cfg
         end, {cfg, options})
         if cfg.syslog_format == 'rfc5424' then
-            local pattern = log_pattern_5424(188, cfg.syslog_timezone, 'tt',
-                                             nil, 'xxx')
+            local pattern = log_pattern_5424(PRIORITY_WARN, cfg.syslog_timezone,
+                                             'tt', nil, 'xxx')
             t.assert_str_matches(read_log(cg.sock), pattern)
         else
             t.assert_equals(cfg.syslog_format, 'rfc3164')
-            local pattern = log_pattern_3164(188, 'tt', nil, 'xxx')
+            local pattern = log_pattern_3164(PRIORITY_WARN, 'tt', nil, 'xxx')
             t.assert_str_matches(read_log(cg.sock), pattern)
         end
     end

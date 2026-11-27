@@ -662,6 +662,20 @@ return schema.new('instance_config', schema.record({
                 -- /var/run/syslog if no server is provided.
                 default = box.NULL,
             }),
+            format = schema.enum({
+                'rfc3164',
+                'rfc5424',
+            }, {
+                box_cfg = 'syslog_format',
+                default = 'rfc3164',
+            }),
+            timezone = schema.enum({
+                'utc',
+                'local',
+            }, {
+                box_cfg = 'syslog_timezone',
+                default = 'utc',
+            }),
         }),
         nonblock = schema.scalar({
             type = 'boolean',

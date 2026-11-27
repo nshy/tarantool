@@ -254,6 +254,14 @@ g.test_more = helpers.run_as_script(function()
             env = {['TT_MEMTX_DIR'] = 'x/y/z'},
             config = {snapshot = {dir = 'x/y/z'}},
         },
+        {
+            env = {['TT_SYSLOG_FORMAT'] = 'rfc5424'},
+            config = {log = {syslog = {format = 'rfc5424'}}},
+        },
+        {
+            env = {['TT_SYSLOG_TIMEZONE'] = 'local'},
+            config = {log = {syslog = {timezone = 'local'}}},
+        },
         -- Numeric options.
         {
             env = {['TT_READAHEAD'] = '32640'},

@@ -251,6 +251,8 @@ g.test_defaults = function()
                 identity = 'tarantool',
                 facility = 'local7',
                 server = box.NULL,
+                format = 'rfc3164',
+                timezone = 'utc',
             },
             nonblock = false,
             level = 5,

@@ -341,6 +341,8 @@ g.test_log = function()
                 identity = 'three',
                 facility = 'four',
                 server = 'five',
+                format = 'rfc5424',
+                timezone = 'local',
             },
             nonblock = true,
             level = 'debug',
@@ -371,6 +373,32 @@ g.test_log = function()
         instance_config:validate(iconfig)
     end)
 
+    iconfig = {
+        log = {
+            syslog = {
+                format = 'plain',
+            },
+        },
+    }
+    err = '[instance_config] log.syslog.format: Got plain, but only the '..
+          'following values are allowed: rfc3164, rfc5424'
+    t.assert_error_msg_content_equals(err, function()
+        instance_config:validate(iconfig)
+    end)
+
+    iconfig = {
+        log = {
+            syslog = {
+                timezone = 'utc+3',
+            },
+        },
+    }
+    err = '[instance_config] log.syslog.timezone: Got utc+3, but only the '..
+          'following values are allowed: utc, local'
+    t.assert_error_msg_content_equals(err, function()
+        instance_config:validate(iconfig)
+    end)
+
     local exp = {
         to = 'stderr',
         file = 'var/log/{{ instance_name }}/tarantool.log',
@@ -379,6 +407,8 @@ g.test_log = function()
             identity = 'tarantool',
             facility = 'local7',
             server = box.NULL,
+            format = 'rfc3164',
+            timezone = 'utc',
         },
         nonblock = false,
         level = 5,
